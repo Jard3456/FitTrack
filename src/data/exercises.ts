@@ -1,0 +1,42 @@
+export const routines = [
+  {
+    id: "1",
+    title: "Pecho y Tríceps",
+    level: "Intermedio",
+    exercises: 8,
+    duration: "60 min",
+    icon: "barbell",
+  },
+  {
+    id: "2",
+    title: "Piernas",
+    level: "Avanzado",
+    exercises: 6,
+    duration: "75 min",
+    icon: "walk",
+  },
+  {
+    id: "3",
+    title: "Espalda y Bíceps",
+    level: "Intermedio",
+    exercises: 7,
+    duration: "55 min",
+    icon: "fitness",
+  },
+  {
+    id: "4",
+    title: "Hombros",
+    level: "Principiante",
+    exercises: 5,
+    duration: "45 min",
+    icon: "body",
+  },
+  {
+    id: "5",
+    title: "Cardio",
+    level: "Todos",
+    exercises: 5,
+    duration: "30 min",
+    icon: "heart",
+  },
+];
