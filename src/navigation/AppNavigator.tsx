@@ -7,6 +7,7 @@ import HomeScreen from "../screens/HomeScreen";
 import RoutinesScreen from "../screens/RoutinesScreen";
 import ProgressScreen from "../screens/ProgressScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import ApiResourcesScreen from "../screens/ApiResourcesScreen";
 import ExerciseNavigator from "./ExerciseNavigator";
 
 const Tab = createBottomTabNavigator();
@@ -42,6 +43,9 @@ export default function AppNavigator() {
               case "Ejercicios":
                 icon = "fitness";
                 break;
+              case "Recursos":
+                icon = "cloud-download";
+                break;
             }
 
             return (
@@ -61,6 +65,11 @@ export default function AppNavigator() {
           name="Ejercicios"
           component={ExerciseNavigator}
           options={{ headerShown: false, title: "Biblioteca" }}
+        />
+        <Tab.Screen
+          name="Recursos"
+          component={ApiResourcesScreen}
+          options={{ title: "Recursos API" }}
         />
         <Tab.Screen name="Perfil" component={ProfileScreen} />
       </Tab.Navigator>
