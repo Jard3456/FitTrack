@@ -7,6 +7,7 @@ import HomeScreen from "../screens/HomeScreen";
 import RoutinesScreen from "../screens/RoutinesScreen";
 import ProgressScreen from "../screens/ProgressScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import ExerciseNavigator from "./ExerciseNavigator";
 
 const Tab = createBottomTabNavigator();
 
@@ -38,6 +39,9 @@ export default function AppNavigator() {
               case "Perfil":
                 icon = "person";
                 break;
+              case "Ejercicios":
+                icon = "fitness";
+                break;
             }
 
             return (
@@ -53,6 +57,11 @@ export default function AppNavigator() {
         <Tab.Screen name="Inicio" component={HomeScreen} />
         <Tab.Screen name="Rutinas" component={RoutinesScreen} />
         <Tab.Screen name="Progreso" component={ProgressScreen} />
+        <Tab.Screen
+          name="Ejercicios"
+          component={ExerciseNavigator}
+          options={{ headerShown: false, title: "Biblioteca" }}
+        />
         <Tab.Screen name="Perfil" component={ProfileScreen} />
       </Tab.Navigator>
     </NavigationContainer>
