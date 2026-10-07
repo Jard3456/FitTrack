@@ -8,7 +8,9 @@ import RoutinesScreen from "../screens/RoutinesScreen";
 import ProgressScreen from "../screens/ProgressScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import ApiResourcesScreen from "../screens/ApiResourcesScreen";
+import AdminUsersScreen from "../screens/AdminUsersScreen";
 import ExerciseNavigator from "./ExerciseNavigator";
+import { AuthUser } from "../services/authApi";
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
@@ -19,13 +21,15 @@ export type AppTabParamList = {
   Ejercicios: undefined;
   Recursos: undefined;
   Perfil: undefined;
+  Administracion: undefined;
 };
 
 type Props = {
   onLogout: () => void;
+  userRole: AuthUser["role"];
 };
 
-export default function AppNavigator({ onLogout }: Props) {
+export default function AppNavigator({ onLogout, userRole }: Props) {
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -59,6 +63,9 @@ export default function AppNavigator({ onLogout }: Props) {
               case "Recursos":
                 icon = "cloud-download";
                 break;
+              case "Administracion":
+                icon = "people";
+                break;
             }
 
             return (
@@ -84,8 +91,15 @@ export default function AppNavigator({ onLogout }: Props) {
           component={ApiResourcesScreen}
           options={{ title: "Recursos API" }}
         />
+        {userRole === "administrador" ? (
+          <Tab.Screen
+            name="Administracion"
+            component={AdminUsersScreen}
+            options={{ title: "Usuarios" }}
+          />
+        ) : null}
         <Tab.Screen name="Perfil">
-          {() => <ProfileScreen onLogout={onLogout} />}
+          {() => <ProfileScreen onLogout={onLogout} userRole={userRole} />}
         </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>

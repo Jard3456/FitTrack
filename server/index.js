@@ -11,6 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 const app = express();
 const port = Number(process.env.API_PORT || 3000);
 const jwtSecret = process.env.JWT_SECRET || "change-this-development-secret";
+const allowedRoles = new Set(["usuario", "entrenador", "administrador"]);
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -30,13 +31,19 @@ function publicUser(user) {
     id: String(user.id),
     name: user.name,
     email: user.email,
+    role: allowedRoles.has(user.role) ? user.role : "usuario",
   };
 }
 
 function createSession(user) {
+  const safeUser = publicUser(user);
   return {
-    token: jwt.sign({ sub: String(user.id) }, jwtSecret, { expiresIn: "7d" }),
-    user: publicUser(user),
+    token: jwt.sign(
+      { sub: safeUser.id, role: safeUser.role },
+      jwtSecret,
+      { expiresIn: "7d" }
+    ),
+    user: safeUser,
   };
 }
 
@@ -53,10 +60,24 @@ function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, jwtSecret);
     req.userId = String(payload.sub);
+    req.userRole = allowedRoles.has(payload.role) ? payload.role : "usuario";
     return next();
   } catch {
     return res.status(401).json({ message: "La sesión no es válida o expiró." });
   }
+}
+
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.userRole)) {
+      return res.status(403).json({ message: "No tienes permisos para esta acción." });
+    }
+    return next();
+  };
+}
+
+function validateRole(role) {
+  return allowedRoles.has(role) ? role : null;
 }
 
 function validateCredentials(email, password) {
@@ -97,10 +118,10 @@ app.post("/api/auth/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const [result] = await pool.execute(
-      "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
-      [name, email, passwordHash]
+      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+      [name, email, passwordHash, "usuario"]
     );
-    const user = { id: result.insertId, name, email };
+    const user = { id: result.insertId, name, email, role: "usuario" };
 
     return res.status(201).json(createSession(user));
   } catch (error) {
@@ -118,7 +139,7 @@ app.post("/api/auth/login", async (req, res) => {
 
   try {
     const [users] = await pool.execute(
-      "SELECT id, name, email, password_hash FROM users WHERE email = ? LIMIT 1",
+      "SELECT id, name, email, password_hash, role FROM users WHERE email = ? LIMIT 1",
       [email]
     );
     const user = users[0];
@@ -136,6 +157,49 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(500).json({ message: "No se pudo iniciar sesión." });
   }
 });
+
+app.get("/api/users", requireAuth, requireRole("administrador"), async (_req, res) => {
+  try {
+    const [users] = await pool.execute(
+      "SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC"
+    );
+    return res.json(users.map(publicUser));
+  } catch (error) {
+    console.error("List users error:", error.message);
+    return res.status(500).json({ message: "No se pudieron consultar los usuarios." });
+  }
+});
+
+app.patch(
+  "/api/users/:userId/role",
+  requireAuth,
+  requireRole("administrador"),
+  async (req, res) => {
+    const role = validateRole(String(req.body?.role || "").trim().toLowerCase());
+
+    if (!role) {
+      return res.status(400).json({
+        message: "El rol debe ser usuario, entrenador o administrador.",
+      });
+    }
+
+    try {
+      const [result] = await pool.execute(
+        "UPDATE users SET role = ? WHERE id = ?",
+        [role, req.params.userId]
+      );
+
+      if (!result.affectedRows) {
+        return res.status(404).json({ message: "Usuario no encontrado." });
+      }
+
+      return res.json({ message: "Rol actualizado.", role });
+    } catch (error) {
+      console.error("Update user role error:", error.message);
+      return res.status(500).json({ message: "No se pudo actualizar el rol." });
+    }
+  }
+);
 
 app.get("/api/exercises/custom", requireAuth, async (req, res) => {
   try {

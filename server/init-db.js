@@ -19,6 +19,18 @@ async function main() {
     "utf8"
   );
   await connection.query(schema);
+
+  const [roleColumn] = await connection.query(
+    "SHOW COLUMNS FROM fittrack.users LIKE 'role'"
+  );
+
+  if (!roleColumn.length) {
+    await connection.query(
+      "ALTER TABLE fittrack.users ADD COLUMN role ENUM('usuario', 'entrenador', 'administrador') NOT NULL DEFAULT 'usuario' AFTER password_hash"
+    );
+    console.log("Columna de roles agregada a users.");
+  }
+
   await connection.end();
   console.log("Base de datos y tablas de FitTrack listas.");
 }

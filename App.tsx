@@ -37,7 +37,7 @@ export default function App() {
     setSession(null);
   };
 
-  return <AppNavigator onLogout={handleLogout} />;
+  return <AppNavigator onLogout={handleLogout} userRole={session.user.role} />;
 }
 
 const styles = StyleSheet.create({

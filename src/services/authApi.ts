@@ -8,6 +8,7 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  role: "usuario" | "entrenador" | "administrador";
 };
 
 export type AuthSession = {
@@ -47,6 +48,10 @@ function normalizeSession(payload: any): AuthSession {
       id: String(user.id),
       name: String(user.name ?? "Usuario"),
       email: String(user.email),
+      role:
+        user.role === "entrenador" || user.role === "administrador"
+          ? user.role
+          : "usuario",
     },
   };
 }
@@ -108,7 +113,22 @@ export async function getStoredSession(): Promise<AuthSession | null> {
   if (!storedSession) return null;
 
   try {
-    return JSON.parse(storedSession) as AuthSession;
+    const session = JSON.parse(storedSession) as AuthSession;
+    if (!session?.token || !session?.user?.id || !session?.user?.email) {
+      throw new Error("Sesión inválida");
+    }
+
+    return {
+      ...session,
+      user: {
+        ...session.user,
+        role:
+          session.user.role === "entrenador" ||
+          session.user.role === "administrador"
+            ? session.user.role
+            : "usuario",
+      },
+    };
   } catch {
     await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
     return null;

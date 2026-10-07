@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -11,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -39,6 +39,39 @@ const emptyCustomExercise: CustomExerciseInput = {
   instructions: "",
   safetyInfo: "Usa una técnica controlada y detente si sientes dolor.",
 };
+
+const exerciseTypes = ["Fuerza", "Cardio", "Estiramiento", "Pliometría"];
+const exerciseDifficulties = ["Principiante", "Intermedio", "Avanzado"];
+
+function OptionSelector({
+  options,
+  value,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <View style={styles.optionsRow}>
+      {options.map((option) => {
+        const selected = option === value;
+        return (
+          <TouchableOpacity
+            key={option}
+            style={[styles.optionButton, selected && styles.optionButtonSelected]}
+            onPress={() => onChange(option)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
+              {option}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
 
 const translateExercise = (exercise: Exercise) => ({
   ...exercise,
@@ -116,7 +149,10 @@ export default function ExerciseListScreen({ navigation }: Props) {
 
   const saveCustomExercise = async () => {
     if (!customExercise.name.trim() || !customExercise.instructions.trim()) {
-      setError("El nombre y las instrucciones son obligatorios.");
+      Alert.alert(
+        "Datos incompletos",
+        "El nombre y las instrucciones son obligatorios."
+      );
       return;
     }
 
@@ -136,11 +172,12 @@ export default function ExerciseListScreen({ navigation }: Props) {
       setModalVisible(false);
       await loadExercises(search, true);
     } catch (requestError) {
-      setError(
+      const message =
         requestError instanceof Error
           ? requestError.message
-          : "No se pudo guardar el ejercicio personalizado."
-      );
+          : "No se pudo guardar el ejercicio personalizado.";
+      setError(message);
+      Alert.alert("No se pudo guardar", message);
     } finally {
       setSavingCustom(false);
     }
@@ -296,17 +333,11 @@ export default function ExerciseListScreen({ navigation }: Props) {
           />
 
           <Text style={styles.formLabel}>Tipo</Text>
-          <View style={styles.formPicker}>
-            <Picker
-              selectedValue={customExercise.type}
-              onValueChange={(value) => updateCustomField("type", value)}
-            >
-              <Picker.Item label="Fuerza" value="Fuerza" />
-              <Picker.Item label="Cardio" value="Cardio" />
-              <Picker.Item label="Estiramiento" value="Estiramiento" />
-              <Picker.Item label="Pliometría" value="Pliometría" />
-            </Picker>
-          </View>
+          <OptionSelector
+            options={exerciseTypes}
+            value={customExercise.type}
+            onChange={(value) => updateCustomField("type", value)}
+          />
 
           <Text style={styles.formLabel}>Músculo</Text>
           <TextInput
@@ -317,16 +348,11 @@ export default function ExerciseListScreen({ navigation }: Props) {
           />
 
           <Text style={styles.formLabel}>Dificultad</Text>
-          <View style={styles.formPicker}>
-            <Picker
-              selectedValue={customExercise.difficulty}
-              onValueChange={(value) => updateCustomField("difficulty", value)}
-            >
-              <Picker.Item label="Principiante" value="Principiante" />
-              <Picker.Item label="Intermedio" value="Intermedio" />
-              <Picker.Item label="Avanzado" value="Avanzado" />
-            </Picker>
-          </View>
+          <OptionSelector
+            options={exerciseDifficulties}
+            value={customExercise.difficulty}
+            onChange={(value) => updateCustomField("difficulty", value)}
+          />
 
           <Text style={styles.formLabel}>Equipo</Text>
           <TextInput
@@ -478,6 +504,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
   },
+  optionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  optionButton: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionButtonSelected: {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#2563EB",
+  },
+  optionText: { color: "#475569", fontWeight: "600" },
+  optionTextSelected: { color: "#1D4ED8" },
   multilineInput: { minHeight: 100, textAlignVertical: "top" },
   saveButton: {
     backgroundColor: "#2563EB",

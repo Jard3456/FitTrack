@@ -17,14 +17,22 @@ import {
   UserProgress,
 } from "../services/databaseApi";
 import { formatBmi } from "../utils/fitness";
+import { AuthUser } from "../services/authApi";
 
 const PROGRESS_STORAGE_KEY = "userProgress";
 
 type Props = {
   onLogout: () => void;
+  userRole: AuthUser["role"];
 };
 
-export default function ProfileScreen({ onLogout }: Props) {
+const roleLabels: Record<AuthUser["role"], string> = {
+  usuario: "Usuario",
+  entrenador: "Entrenador",
+  administrador: "Administrador",
+};
+
+export default function ProfileScreen({ onLogout, userRole }: Props) {
   const [weight, setWeight] = useState("--");
   const [height, setHeight] = useState("--");
   const [objective, setObjective] = useState("--");
@@ -148,6 +156,7 @@ export default function ProfileScreen({ onLogout }: Props) {
         <Text style={styles.level}>
           Nivel: Intermedio
         </Text>
+        <Text style={styles.role}>Rol: {roleLabels[userRole]}</Text>
 
         {editing && (
 
@@ -352,6 +361,12 @@ const styles = StyleSheet.create({
   level: {
     color: "#2563EB",
     marginTop: 5,
+    fontWeight: "600",
+  },
+
+  role: {
+    color: "#64748B",
+    marginTop: 4,
     fontWeight: "600",
   },
 

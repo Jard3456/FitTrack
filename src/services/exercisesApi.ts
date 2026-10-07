@@ -2,6 +2,8 @@ import { Exercise } from "../types/exercise";
 import {
   translateDifficulty,
   translateEquipment,
+  translateExerciseName,
+  translateExerciseText,
   translateMuscle,
   translateType,
 } from "../utils/exerciseTranslations";
@@ -37,7 +39,7 @@ const getApiKey = () => {
 
   if (!apiKey) {
     throw new ExercisesApiError(
-      "Falta EXPO_PUBLIC_API_NINJAS_KEY. Genera una API key en API Ninjas y agrégala al archivo .env."
+      "Falta EXPO_PUBLIC_API_NINJAS_KEY. Agrégala al archivo .env."
     );
   }
 
@@ -49,18 +51,19 @@ const normalizeExercise = (
   index: number
 ): Exercise => ({
   id: `${exercise.name ?? "exercise"}-${index}`,
-  name: exercise.name ?? "Ejercicio sin nombre",
+  name: translateExerciseName(exercise.name ?? "Ejercicio sin nombre"),
   type: translateType(exercise.type ?? "strength"),
   muscle: translateMuscle(exercise.muscle ?? "General"),
   difficulty: translateDifficulty(exercise.difficulty ?? "intermediate"),
   equipment: translateEquipment(
     exercise.equipments?.join(", ") || exercise.equipment || "Sin equipo"
   ),
-  instructions:
-    exercise.instructions ?? "No hay instrucciones disponibles para este ejercicio.",
-  safetyInfo:
-    exercise.safety_info ??
-    "Usa una técnica controlada y detén el ejercicio si sientes dolor.",
+  instructions: exercise.instructions
+    ? translateExerciseText(exercise.instructions)
+    : "No hay instrucciones disponibles para este ejercicio.",
+  safetyInfo: exercise.safety_info
+    ? translateExerciseText(exercise.safety_info)
+    : "Usa una técnica controlada y detente si sientes dolor.",
 });
 
 export async function getExercises(search?: string): Promise<Exercise[]> {

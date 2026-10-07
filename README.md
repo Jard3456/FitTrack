@@ -56,7 +56,17 @@ Al abrir la aplicación se muestra el inicio de sesión. También se puede cambi
 - `POST /auth/register` con `{ name, email, password }`
 - `POST /auth/login` con `{ email, password }`
 
-Ambos endpoints deben responder con `{ token, user: { id, name, email } }`. La contraseña debe guardarse en MySQL como hash, nunca como texto plano. El esquema inicial está en `database/schema.sql`.
+Ambos endpoints responden con `{ token, user: { id, name, email, role } }`. Los roles disponibles son `usuario`, `entrenador` y `administrador`. El registro público siempre crea cuentas con el rol `usuario`; la contraseña debe guardarse en MySQL como hash, nunca como texto plano. El esquema inicial está en `database/schema.sql`.
+
+Para convertir una cuenta existente en el primer administrador, ejecuta una sola vez en MySQL:
+
+```sql
+UPDATE fittrack.users
+SET role = 'administrador'
+WHERE email = 'correo-del-administrador@ejemplo.com';
+```
+
+Los administradores pueden consultar usuarios con `GET /api/users` y cambiar roles con `PATCH /api/users/:userId/role` enviando `{ "role": "entrenador" }`.
 
 Para levantar el backend local:
 
