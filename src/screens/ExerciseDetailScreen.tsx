@@ -1,45 +1,91 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
+import { deleteCustomExercise } from "../services/customExercisesApi";
 import { ExerciseStackParamList } from "../types/exercise";
+import {
+  translateDifficulty,
+  translateEquipment,
+  translateMuscle,
+  translateType,
+} from "../utils/exerciseTranslations";
 
-type Props = NativeStackScreenProps<
-  ExerciseStackParamList,
-  "DetalleEjercicio"
->;
+type Props = NativeStackScreenProps<ExerciseStackParamList, "DetalleEjercicio">;
 
-const formatLabel = (value: string) =>
-  value.charAt(0).toUpperCase() + value.slice(1);
-
-export default function ExerciseDetailScreen({ route }: Props) {
+export default function ExerciseDetailScreen({ route, navigation }: Props) {
   const { exercise } = route.params;
+  const type = translateType(exercise.type);
+  const muscle = translateMuscle(exercise.muscle);
+  const difficulty = translateDifficulty(exercise.difficulty);
+  const equipment = translateEquipment(exercise.equipment);
+
+  const removeCustomExercise = () => {
+    if (!exercise.isCustom || !exercise.customId) return;
+
+    Alert.alert(
+      "Eliminar ejercicio",
+      "¿Quieres eliminar este ejercicio de tu biblioteca?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteCustomExercise(exercise.customId!);
+              navigation.goBack();
+            } catch (error) {
+              Alert.alert(
+                "No se pudo eliminar",
+                error instanceof Error ? error.message : "Intenta nuevamente."
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
-          <Ionicons name="fitness" size={46} color="#2563EB" />
+          <Ionicons
+            name={exercise.isCustom ? "person" : "fitness"}
+            size={46}
+            color="#2563EB"
+          />
         </View>
         <Text style={styles.title}>{exercise.name}</Text>
-        <Text style={styles.muscle}>{formatLabel(exercise.muscle)}</Text>
+        <Text style={styles.muscle}>{muscle}</Text>
+        {exercise.isCustom ? (
+          <Text style={styles.customLabel}>Ejercicio personalizado</Text>
+        ) : null}
       </View>
 
       <View style={styles.chipsRow}>
         <View style={styles.chip}>
           <Ionicons name="barbell-outline" size={17} color="#2563EB" />
-          <Text style={styles.chipText}>{formatLabel(exercise.type)}</Text>
+          <Text style={styles.chipText}>{type}</Text>
         </View>
         <View style={styles.chip}>
           <Ionicons name="trending-up-outline" size={17} color="#2563EB" />
-          <Text style={styles.chipText}>{formatLabel(exercise.difficulty)}</Text>
+          <Text style={styles.chipText}>{difficulty}</Text>
         </View>
       </View>
 
       <View style={styles.infoCard}>
         <Text style={styles.sectionTitle}>Equipo</Text>
-        <Text style={styles.body}>{formatLabel(exercise.equipment)}</Text>
+        <Text style={styles.body}>{equipment}</Text>
       </View>
 
       <View style={styles.infoCard}>
@@ -54,6 +100,13 @@ export default function ExerciseDetailScreen({ route }: Props) {
         </View>
         <Text style={styles.safetyBody}>{exercise.safetyInfo}</Text>
       </View>
+
+      {exercise.isCustom ? (
+        <TouchableOpacity style={styles.deleteButton} onPress={removeCustomExercise}>
+          <Ionicons name="trash-outline" size={20} color="#B91C1C" />
+          <Text style={styles.deleteButtonText}>Eliminar de mi biblioteca</Text>
+        </TouchableOpacity>
+      ) : null}
     </ScrollView>
   );
 }
@@ -78,6 +131,7 @@ const styles = StyleSheet.create({
   },
   title: { color: "#FFFFFF", textAlign: "center", fontSize: 26, fontWeight: "bold" },
   muscle: { color: "#DBEAFE", fontSize: 16, marginTop: 6, fontWeight: "600" },
+  customLabel: { color: "#CCFBF1", fontSize: 13, marginTop: 8, fontWeight: "600" },
   chipsRow: { flexDirection: "row", gap: 10, marginVertical: 16 },
   chip: {
     backgroundColor: "#FFFFFF",
@@ -89,11 +143,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   chipText: { color: "#334155", fontWeight: "600", marginLeft: 7, flexShrink: 1 },
-  infoCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 18, marginBottom: 14, elevation: 2 },
+  infoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 14,
+    elevation: 2,
+  },
   sectionTitle: { color: "#111827", fontSize: 18, fontWeight: "bold", marginBottom: 9 },
   body: { color: "#475569", fontSize: 16, lineHeight: 25 },
   safetyCard: { backgroundColor: "#F0FDF4", borderRadius: 18, padding: 18 },
   safetyTitleRow: { flexDirection: "row", alignItems: "center" },
   safetyTitle: { color: "#166534", fontSize: 17, fontWeight: "bold", marginLeft: 8 },
   safetyBody: { color: "#166534", fontSize: 15, lineHeight: 23, marginTop: 10 },
+  deleteButton: {
+    backgroundColor: "#FEF2F2",
+    borderRadius: 14,
+    padding: 15,
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButtonText: { color: "#B91C1C", fontWeight: "bold", marginLeft: 7 },
 });

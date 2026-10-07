@@ -10,11 +10,25 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import {
+  getUserProgress,
+  isDatabaseConfigured,
+  saveUserProgress,
+  UserProgress,
+} from "../services/databaseApi";
+import { formatBmi } from "../utils/fitness";
 
-export default function ProfileScreen() {
+const PROGRESS_STORAGE_KEY = "userProgress";
+
+type Props = {
+  onLogout: () => void;
+};
+
+export default function ProfileScreen({ onLogout }: Props) {
   const [weight, setWeight] = useState("--");
   const [height, setHeight] = useState("--");
   const [objective, setObjective] = useState("--");
+  const [bmi, setBmi] = useState("--");
 
   const [name, setName] = useState("JARD GAMES");
   const [editing, setEditing] = useState(false);
@@ -22,18 +36,40 @@ export default function ProfileScreen() {
 
   const loadData = async () => {
     try {
-      const data = await AsyncStorage.getItem("userProgress");
+      const data = await AsyncStorage.getItem(PROGRESS_STORAGE_KEY);
 
       if (data) {
-        const user = JSON.parse(data);
+        const user = JSON.parse(data) as UserProgress;
 
         setWeight(user.weight || "--");
         setHeight(user.height || "--");
         setObjective(user.objective || "--");
+        setBmi(formatBmi(user.weight || "", user.height || "") || "--");
         setName(user.name || "JARD GAMES");
       }
+
+      if (isDatabaseConfigured) {
+        const remoteUser = await getUserProgress();
+
+        if (remoteUser) {
+          const localUser = data ? (JSON.parse(data) as UserProgress) : {};
+          const mergedUser = { ...localUser, ...remoteUser };
+
+          setWeight(mergedUser.weight || "--");
+          setHeight(mergedUser.height || "--");
+          setObjective(mergedUser.objective || "--");
+          setBmi(
+            formatBmi(mergedUser.weight || "", mergedUser.height || "") || "--"
+          );
+          setName(mergedUser.name || "JARD GAMES");
+          await AsyncStorage.setItem(
+            PROGRESS_STORAGE_KEY,
+            JSON.stringify(mergedUser)
+          );
+        }
+      }
     } catch (error) {
-      console.log(error);
+      console.warn("No se pudo cargar el perfil", error);
     }
   };
 
@@ -41,16 +77,24 @@ export default function ProfileScreen() {
     if (!newName.trim()) return;
 
     try {
-      const data = await AsyncStorage.getItem("userProgress");
+      const data = await AsyncStorage.getItem(PROGRESS_STORAGE_KEY);
 
-      const user = data ? JSON.parse(data) : {};
+      const user = data ? (JSON.parse(data) as UserProgress) : {};
 
       user.name = newName;
 
       await AsyncStorage.setItem(
-        "userProgress",
+        PROGRESS_STORAGE_KEY,
         JSON.stringify(user)
       );
+
+      if (isDatabaseConfigured) {
+        try {
+          await saveUserProgress(user);
+        } catch (error) {
+          console.warn("No se pudo sincronizar el nombre", error);
+        }
+      }
 
       setName(newName);
       setEditing(false);
@@ -187,6 +231,23 @@ export default function ProfileScreen() {
 
         </View>
 
+        <View style={styles.row}>
+          <Ionicons
+            name="analytics"
+            size={24}
+            color="#2563EB"
+          />
+
+          <Text style={styles.label}>
+            IMC
+          </Text>
+
+          <Text style={styles.value}>
+            {bmi}
+          </Text>
+
+        </View>
+
       </View>
 
       {/* Estadísticas */}
@@ -221,7 +282,7 @@ export default function ProfileScreen() {
 
       {/* Cerrar sesión */}
 
-      <TouchableOpacity style={styles.logoutButton}>
+      <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
 
         <Ionicons
           name="log-out-outline"

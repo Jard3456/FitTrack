@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { getExercises } from "../services/exercisesApi";
+import { isDatabaseConfigured } from "../services/databaseApi";
 import { Exercise } from "../types/exercise";
 
 const ENDPOINT = "api.api-ninjas.com/v1/exercises";
@@ -53,6 +54,25 @@ export default function ApiResourcesScreen() {
       <Text style={styles.subtitle}>
         Consulta de los recursos recibidos desde API Ninjas.
       </Text>
+
+      <View style={styles.databaseStatus}>
+        <Ionicons
+          name={isDatabaseConfigured ? "server" : "server-outline"}
+          size={19}
+          color={isDatabaseConfigured ? "#15803D" : "#B45309"}
+        />
+        <Text
+          style={
+            isDatabaseConfigured
+              ? styles.databaseConnected
+              : styles.databasePending
+          }
+        >
+          {isDatabaseConfigured
+            ? "Backend de base de datos configurado"
+            : "Backend de base de datos pendiente de configurar"}
+        </Text>
+      </View>
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryIcon}>
@@ -151,6 +171,23 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F4F6F9", padding: 20 },
   title: { fontSize: 34, fontWeight: "bold", color: "#111827", marginTop: 20 },
   subtitle: { color: "#6B7280", fontSize: 16, marginTop: 4, marginBottom: 18 },
+  databaseStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  databaseConnected: {
+    color: "#15803D",
+    marginLeft: 7,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  databasePending: {
+    color: "#B45309",
+    marginLeft: 7,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   summaryCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,

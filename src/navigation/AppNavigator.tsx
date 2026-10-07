@@ -10,9 +10,22 @@ import ProfileScreen from "../screens/ProfileScreen";
 import ApiResourcesScreen from "../screens/ApiResourcesScreen";
 import ExerciseNavigator from "./ExerciseNavigator";
 
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<AppTabParamList>();
 
-export default function AppNavigator() {
+export type AppTabParamList = {
+  Inicio: undefined;
+  Rutinas: undefined;
+  Progreso: undefined;
+  Ejercicios: undefined;
+  Recursos: undefined;
+  Perfil: undefined;
+};
+
+type Props = {
+  onLogout: () => void;
+};
+
+export default function AppNavigator({ onLogout }: Props) {
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -71,7 +84,9 @@ export default function AppNavigator() {
           component={ApiResourcesScreen}
           options={{ title: "Recursos API" }}
         />
-        <Tab.Screen name="Perfil" component={ProfileScreen} />
+        <Tab.Screen name="Perfil">
+          {() => <ProfileScreen onLogout={onLogout} />}
+        </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>
   );

@@ -1,4 +1,10 @@
 import { Exercise } from "../types/exercise";
+import {
+  translateDifficulty,
+  translateEquipment,
+  translateMuscle,
+  translateType,
+} from "../utils/exerciseTranslations";
 
 declare const process: {
   env: {
@@ -44,11 +50,12 @@ const normalizeExercise = (
 ): Exercise => ({
   id: `${exercise.name ?? "exercise"}-${index}`,
   name: exercise.name ?? "Ejercicio sin nombre",
-  type: exercise.type ?? "strength",
-  muscle: exercise.muscle ?? "General",
-  difficulty: exercise.difficulty ?? "intermediate",
-  equipment:
-    exercise.equipments?.join(", ") || exercise.equipment || "Sin equipo",
+  type: translateType(exercise.type ?? "strength"),
+  muscle: translateMuscle(exercise.muscle ?? "General"),
+  difficulty: translateDifficulty(exercise.difficulty ?? "intermediate"),
+  equipment: translateEquipment(
+    exercise.equipments?.join(", ") || exercise.equipment || "Sin equipo"
+  ),
   instructions:
     exercise.instructions ?? "No hay instrucciones disponibles para este ejercicio.",
   safetyInfo:

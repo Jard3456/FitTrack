@@ -1,5 +1,7 @@
 export type Exercise = {
   id: string;
+  customId?: number;
+  isCustom?: boolean;
   name: string;
   type: string;
   muscle: string;

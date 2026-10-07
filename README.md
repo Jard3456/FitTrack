@@ -27,6 +27,47 @@ FitTrack es una aplicación móvil desarrollada con **React Native**, **Expo** y
 - AsyncStorage
 - React Native Picker
 
+## Conexión con la base de datos
+
+La aplicación usa un backend REST para sincronizar el progreso del usuario. Copia `.env.example` como `.env` y configura:
+
+```env
+EXPO_PUBLIC_DATABASE_API_URL=https://tu-backend.example.com/api
+EXPO_PUBLIC_DATABASE_USER_ID=usuario-demo
+```
+
+El backend debe implementar estos endpoints y aceptar JSON:
+
+- `GET /progress/:userId`
+- `PUT /progress/:userId`
+
+- `GET /exercises/custom`
+- `POST /exercises/custom`
+- `DELETE /exercises/custom/:exerciseId`
+
+El cuerpo enviado contiene `userId`, `name`, `weight`, `height` y `objective`. Si la URL no está configurada o el backend no está disponible, la app conserva el progreso en `AsyncStorage`.
+
+Los ejercicios personalizados se guardan con el `user_id` de la sesión autenticada y solo ese usuario puede consultarlos o eliminarlos. La biblioteca traduce al español las categorías, músculos, dificultades y equipos de los ejercicios externos; los nombres e instrucciones que vienen como texto libre desde API Ninjas conservan su contenido original cuando no existe una traducción definida.
+
+## Inicio de sesión y registro
+
+Al abrir la aplicación se muestra el inicio de sesión. También se puede cambiar al formulario de registro. El backend debe implementar:
+
+- `POST /auth/register` con `{ name, email, password }`
+- `POST /auth/login` con `{ email, password }`
+
+Ambos endpoints deben responder con `{ token, user: { id, name, email } }`. La contraseña debe guardarse en MySQL como hash, nunca como texto plano. El esquema inicial está en `database/schema.sql`.
+
+Para levantar el backend local:
+
+```bash
+cd server
+npm install
+npm start
+```
+
+Antes de abrir la app, ejecuta `database/schema.sql` en MySQL y configura `EXPO_PUBLIC_DATABASE_API_URL` según el dispositivo: `http://127.0.0.1:3000/api` para web/iOS Simulator, `http://10.0.2.2:3000/api` para emulador Android o la IP local de tu PC para un teléfono físico.
+
 ---
 
 ## 📂 Estructura del proyecto
