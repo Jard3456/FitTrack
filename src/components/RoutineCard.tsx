@@ -6,7 +6,10 @@ interface Props {
   title: string;
   level: string;
   exercises: number;
+  exerciseNames: string[];
   duration: string;
+  completedCount: number;
+  onPress: () => void;
   icon: keyof typeof Ionicons.glyphMap;
 }
 
@@ -14,7 +17,10 @@ export default function RoutineCard({
   title,
   level,
   exercises,
+  exerciseNames,
   duration,
+  completedCount,
+  onPress,
   icon,
 }: Props) {
   return (
@@ -38,10 +44,18 @@ export default function RoutineCard({
           {exercises} ejercicios • {duration}
         </Text>
 
-        <TouchableOpacity>
-          <Text style={styles.button}>
-            Ver rutina →
-          </Text>
+        <Text style={styles.exerciseList} numberOfLines={2}>
+          {exerciseNames.join(" • ")}
+        </Text>
+
+        <Text style={styles.completedText}>
+          {completedCount > 0
+            ? `Completada ${completedCount} ${completedCount === 1 ? "vez" : "veces"}`
+            : "Aún no completada"}
+        </Text>
+
+        <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+          <Text style={styles.button}>Abrir rutina →</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -91,6 +105,17 @@ const styles = StyleSheet.create({
     marginTop:5,
   },
 
+  exerciseList:{
+    marginTop:10,
+    color:"#475569",
+    fontSize:13,
+    lineHeight:18,
+  },
+  completedText:{
+    marginTop:7,
+    color:"#64748B",
+    fontSize:12,
+  },
   button:{
     marginTop:10,
     color:"#2563EB",

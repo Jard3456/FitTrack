@@ -9,6 +9,7 @@ import ProgressScreen from "../screens/ProgressScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import ApiResourcesScreen from "../screens/ApiResourcesScreen";
 import AdminUsersScreen from "../screens/AdminUsersScreen";
+import TrainerUsersScreen from "../screens/TrainerUsersScreen";
 import ExerciseNavigator from "./ExerciseNavigator";
 import { AuthUser } from "../services/authApi";
 
@@ -22,6 +23,7 @@ export type AppTabParamList = {
   Recursos: undefined;
   Perfil: undefined;
   Administracion: undefined;
+  Entrenamiento: undefined;
 };
 
 type Props = {
@@ -66,6 +68,9 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
               case "Administracion":
                 icon = "people";
                 break;
+              case "Entrenamiento":
+                icon = "people-circle";
+                break;
             }
 
             return (
@@ -96,6 +101,13 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
             name="Administracion"
             component={AdminUsersScreen}
             options={{ title: "Usuarios" }}
+          />
+        ) : null}
+        {userRole === "entrenador" ? (
+          <Tab.Screen
+            name="Entrenamiento"
+            component={TrainerUsersScreen}
+            options={{ title: "Mis usuarios" }}
           />
         ) : null}
         <Tab.Screen name="Perfil">

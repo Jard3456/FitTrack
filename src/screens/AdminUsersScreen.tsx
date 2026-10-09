@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
@@ -11,7 +13,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { AuthUser } from "../services/authApi";
-import { getUsersForAdmin, UserRole } from "../services/adminUsersApi";
+import {
+  getUsersForAdmin,
+  updateUserRole,
+  UserRole,
+} from "../services/adminUsersApi";
 
 const roleOptions: Array<{
   value: UserRole;
@@ -35,6 +41,9 @@ export default function AdminUsersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
+  const [selectedRole, setSelectedRole] = useState<UserRole>("usuario");
+  const [savingRole, setSavingRole] = useState(false);
 
   const loadUsers = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -63,6 +72,40 @@ export default function AdminUsersScreen() {
     () => users.filter((user) => user.role === activeRole),
     [activeRole, users]
   );
+
+  const openRoleModal = (user: AuthUser) => {
+    setSelectedUser(user);
+    setSelectedRole(user.role);
+  };
+
+  const closeRoleModal = () => {
+    if (!savingRole) setSelectedUser(null);
+  };
+
+  const saveRole = async () => {
+    if (!selectedUser) return;
+
+    setSavingRole(true);
+    try {
+      await updateUserRole(selectedUser.id, selectedRole);
+      setUsers((currentUsers) =>
+        currentUsers.map((user) =>
+          user.id === selectedUser.id ? { ...user, role: selectedRole } : user
+        )
+      );
+      setSelectedUser(null);
+      Alert.alert("Rol actualizado", "El cambio se guardó correctamente.");
+    } catch (saveError) {
+      Alert.alert(
+        "No se pudo actualizar",
+        saveError instanceof Error
+          ? saveError.message
+          : "No se pudo guardar el nuevo rol."
+      );
+    } finally {
+      setSavingRole(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -154,12 +197,79 @@ export default function AdminUsersScreen() {
               <Text style={styles.userName}>{item.name}</Text>
               <Text style={styles.userEmail}>{item.email}</Text>
             </View>
-            <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>{roleLabels[item.role]}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.changeRoleButton}
+              onPress={() => openRoleModal(item)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.changeRoleText}>Cambiar rol</Text>
+            </TouchableOpacity>
           </View>
         )}
       />
+
+      <Modal
+        visible={Boolean(selectedUser)}
+        transparent
+        animationType="fade"
+        onRequestClose={closeRoleModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeadingContent}>
+                <Text style={styles.modalTitle}>Cambiar rol</Text>
+                <Text style={styles.modalUserName}>{selectedUser?.name}</Text>
+                <Text style={styles.modalUserEmail}>{selectedUser?.email}</Text>
+              </View>
+              <TouchableOpacity onPress={closeRoleModal} disabled={savingRole}>
+                <Ionicons name="close" size={26} color="#334155" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalLabel}>Selecciona el nuevo rol</Text>
+            {roleOptions.map((option) => {
+              const selected = option.value === selectedRole;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[styles.roleOption, selected && styles.selectedRoleOption]}
+                  onPress={() => setSelectedRole(option.value)}
+                  disabled={savingRole}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={option.icon}
+                    size={22}
+                    color={selected ? "#1D4ED8" : "#64748B"}
+                  />
+                  <Text
+                    style={[styles.roleOptionText, selected && styles.selectedRoleOptionText]}
+                  >
+                    {roleLabels[option.value]}
+                  </Text>
+                  {selected ? (
+                    <Ionicons name="checkmark-circle" size={22} color="#2563EB" />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+
+            <TouchableOpacity
+              style={styles.saveRoleButton}
+              onPress={saveRole}
+              disabled={savingRole}
+              activeOpacity={0.85}
+            >
+              {savingRole ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.saveRoleText}>Guardar cambio</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -235,13 +345,13 @@ const styles = StyleSheet.create({
   userInfo: { flex: 1, marginHorizontal: 12 },
   userName: { color: "#111827", fontSize: 16, fontWeight: "bold" },
   userEmail: { color: "#64748B", fontSize: 13, marginTop: 4 },
-  roleBadge: {
+  changeRoleButton: {
     backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    borderRadius: 9,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
   },
-  roleBadgeText: { color: "#1D4ED8", fontSize: 11, fontWeight: "bold" },
+  changeRoleText: { color: "#1D4ED8", fontSize: 11, fontWeight: "bold" },
   errorCard: {
     backgroundColor: "#FEF2F2",
     borderRadius: 12,
@@ -261,4 +371,43 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { color: "#334155", fontSize: 16, fontWeight: "bold", marginTop: 10 },
   emptyText: { color: "#64748B", textAlign: "center", marginTop: 5 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+  },
+  modalHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 20 },
+  modalHeadingContent: { flex: 1 },
+  modalTitle: { color: "#111827", fontSize: 23, fontWeight: "bold" },
+  modalUserName: { color: "#334155", fontSize: 16, fontWeight: "600", marginTop: 8 },
+  modalUserEmail: { color: "#64748B", fontSize: 13, marginTop: 3 },
+  modalLabel: { color: "#475569", fontWeight: "600", marginBottom: 9 },
+  roleOption: {
+    minHeight: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    marginBottom: 9,
+  },
+  selectedRoleOption: { backgroundColor: "#EFF6FF", borderColor: "#93C5FD" },
+  roleOptionText: { flex: 1, color: "#475569", fontWeight: "600", marginLeft: 10 },
+  selectedRoleOptionText: { color: "#1D4ED8" },
+  saveRoleButton: {
+    backgroundColor: "#2563EB",
+    minHeight: 52,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+  },
+  saveRoleText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
 });

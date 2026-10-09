@@ -201,6 +201,421 @@ app.patch(
   }
 );
 
+app.get("/api/trainer/users", requireAuth, requireRole("entrenador"), async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.name, u.email,
+              a.trainer_id AS trainerId,
+              t.name AS trainerName,
+              (SELECT COUNT(*) FROM routines r
+               WHERE r.user_id = u.id AND r.trainer_id = ?) AS routineCount,
+              CASE WHEN a.user_id IS NULL THEN 1 ELSE 0 END AS isAvailable,
+              CASE WHEN a.trainer_id = ? THEN 1 ELSE 0 END AS assignedToMe
+       FROM users u
+       LEFT JOIN trainer_user_assignments a ON a.user_id = u.id
+       LEFT JOIN users t ON t.id = a.trainer_id
+       WHERE u.role = 'usuario'
+       ORDER BY u.name ASC`,
+      [req.userId, req.userId]
+    );
+
+    return res.json(
+      rows.map((row) => ({
+        id: String(row.id),
+        name: row.name,
+        email: row.email,
+        trainerId: row.trainerId === null ? null : String(row.trainerId),
+        trainerName: row.trainerName || null,
+        routineCount: Number(row.routineCount || 0),
+        isAvailable: Boolean(row.isAvailable),
+        assignedToMe: Boolean(row.assignedToMe),
+      }))
+    );
+  } catch (error) {
+    console.error("List trainer users error:", error.message);
+    return res.status(500).json({ message: "No se pudieron consultar los usuarios." });
+  }
+});
+
+app.post(
+  "/api/trainer/users/:userId",
+  requireAuth,
+  requireRole("entrenador"),
+  async (req, res) => {
+    const userId = String(req.params.userId);
+
+    if (userId === req.userId) {
+      return res.status(400).json({ message: "No puedes asignarte como tu propio usuario." });
+    }
+
+    try {
+      const [users] = await pool.execute(
+        "SELECT id, role FROM users WHERE id = ? LIMIT 1",
+        [userId]
+      );
+      const user = users[0];
+
+      if (!user) return res.status(404).json({ message: "Usuario no encontrado." });
+      if (user.role !== "usuario") {
+        return res.status(400).json({
+          message: "Solo puedes asignar usuarios con rol usuario.",
+        });
+      }
+
+      await pool.execute(
+        "INSERT INTO trainer_user_assignments (trainer_id, user_id) VALUES (?, ?)",
+        [req.userId, userId]
+      );
+
+      return res.status(201).json({ message: "Usuario asignado correctamente." });
+    } catch (error) {
+      if (error.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          message: "Este usuario ya está siendo entrenado por otro entrenador.",
+        });
+      }
+
+      console.error("Assign trainer user error:", error.message);
+      return res.status(500).json({ message: "No se pudo asignar el usuario." });
+    }
+  }
+);
+
+app.delete(
+  "/api/trainer/users/:userId",
+  requireAuth,
+  requireRole("entrenador"),
+  async (req, res) => {
+    try {
+      const [result] = await pool.execute(
+        "DELETE FROM trainer_user_assignments WHERE trainer_id = ? AND user_id = ?",
+        [req.userId, req.params.userId]
+      );
+
+      if (!result.affectedRows) {
+        return res.status(404).json({ message: "Este usuario no está asignado a ti." });
+      }
+
+      return res.status(204).send();
+    } catch (error) {
+      console.error("Remove trainer user error:", error.message);
+      return res.status(500).json({ message: "No se pudo liberar el usuario." });
+    }
+  }
+);
+
+app.post(
+  "/api/trainer/users/:userId/routines",
+  requireAuth,
+  requireRole("entrenador"),
+  async (req, res) => {
+    const userId = String(req.params.userId);
+    const title = String(req.body?.title || "").trim();
+    const level = String(req.body?.level || "Intermedio").trim();
+    const durationMinutes = Number(req.body?.durationMinutes || 0);
+    const exerciseIds = Array.from(
+      new Set(
+        (Array.isArray(req.body?.exerciseIds) ? req.body.exerciseIds : [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )
+    );
+
+    if (!title || !exerciseIds.length || !Number.isInteger(durationMinutes) || durationMinutes < 0) {
+      return res.status(400).json({
+        message: "El título, la duración y al menos un ejercicio son obligatorios.",
+      });
+    }
+
+    try {
+      const [assignment] = await pool.execute(
+        `SELECT id FROM trainer_user_assignments
+         WHERE trainer_id = ? AND user_id = ? LIMIT 1`,
+        [req.userId, userId]
+      );
+
+      if (!assignment.length) {
+        return res.status(403).json({
+          message: "Solo puedes asignar rutinas a tus usuarios entrenados.",
+        });
+      }
+
+      const placeholders = exerciseIds.map(() => "?").join(", ");
+      const [exercises] = await pool.query(
+        `SELECT id FROM custom_exercises
+         WHERE user_id = ? AND id IN (${placeholders})`,
+        [req.userId, ...exerciseIds]
+      );
+
+      if (exercises.length !== exerciseIds.length) {
+        return res.status(400).json({
+          message: "Solo puedes agregar ejercicios registrados por ti.",
+        });
+      }
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [routineResult] = await connection.execute(
+          `INSERT INTO routines (trainer_id, user_id, title, level, duration_minutes)
+           VALUES (?, ?, ?, ?, ?)`,
+          [req.userId, userId, title, level || "Intermedio", durationMinutes]
+        );
+
+        for (const [index, exerciseId] of exerciseIds.entries()) {
+          await connection.execute(
+            `INSERT INTO routine_exercises (routine_id, exercise_id, exercise_order)
+             VALUES (?, ?, ?)`,
+            [routineResult.insertId, exerciseId, index + 1]
+          );
+        }
+
+        await connection.commit();
+        return res.status(201).json({
+          id: String(routineResult.insertId),
+          title,
+          level: level || "Intermedio",
+          durationMinutes,
+          exerciseCount: exerciseIds.length,
+        });
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+    } catch (error) {
+      console.error("Create routine error:", error.message);
+      return res.status(500).json({ message: "No se pudo guardar la rutina." });
+    }
+  }
+);
+
+app.get("/api/routines", requireAuth, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT r.id, r.title, r.level, r.duration_minutes AS durationMinutes,
+              r.created_at,
+              (SELECT COUNT(*) FROM routine_completions rc
+               WHERE rc.routine_id = r.id AND rc.user_id = ?) AS completedCount,
+              (SELECT MAX(rc.completed_at) FROM routine_completions rc
+               WHERE rc.routine_id = r.id AND rc.user_id = ?) AS lastCompletedAt,
+              ce.id AS exerciseId, ce.name AS exerciseName, ce.type AS exerciseType
+       FROM routines r
+       LEFT JOIN routine_exercises re ON re.routine_id = r.id
+       LEFT JOIN custom_exercises ce ON ce.id = re.exercise_id
+       WHERE r.user_id = ?
+       ORDER BY r.created_at DESC, re.exercise_order ASC`,
+      [req.userId, req.userId, req.userId]
+    );
+
+    const routinesById = new Map();
+    for (const row of rows) {
+      const routineId = String(row.id);
+      if (!routinesById.has(routineId)) {
+        routinesById.set(routineId, {
+          id: routineId,
+          title: row.title,
+          level: row.level,
+          durationMinutes: Number(row.durationMinutes || 0),
+          completedCount: Number(row.completedCount || 0),
+          lastCompletedAt: row.lastCompletedAt,
+          exercises: [],
+        });
+      }
+
+      if (row.exerciseId !== null) {
+        routinesById.get(routineId).exercises.push({
+          id: String(row.exerciseId),
+          name: row.exerciseName,
+          type: row.exerciseType,
+        });
+      }
+    }
+
+    return res.json(Array.from(routinesById.values()));
+  } catch (error) {
+    console.error("Get routines error:", error.message);
+    return res.status(500).json({ message: "No se pudieron consultar las rutinas." });
+  }
+});
+
+app.post("/api/routines/:routineId/complete", requireAuth, async (req, res) => {
+  const routineId = String(req.params.routineId);
+  const submittedLogs = Array.isArray(req.body?.exercises)
+    ? req.body.exercises
+    : [];
+
+  try {
+    const [routineExercises] = await pool.execute(
+      `SELECT r.id AS routineId, re.exercise_id AS exerciseId,
+              ce.name AS exerciseName, ce.type AS exerciseType
+       FROM routines r
+       INNER JOIN routine_exercises re ON re.routine_id = r.id
+       INNER JOIN custom_exercises ce ON ce.id = re.exercise_id
+       WHERE r.id = ? AND r.user_id = ?
+       ORDER BY re.exercise_order ASC`,
+      [routineId, req.userId]
+    );
+
+    if (!routineExercises.length) {
+      return res.status(404).json({ message: "Rutina no encontrada." });
+    }
+
+    const logByExercise = new Map(
+      submittedLogs.map((log) => [String(log?.exerciseId), log])
+    );
+    const normalizedLogs = [];
+
+    for (const exercise of routineExercises) {
+      const log = logByExercise.get(String(exercise.exerciseId));
+      if (!log) {
+        return res.status(400).json({
+          message: `Registra los datos de ${exercise.exerciseName}.`,
+        });
+      }
+
+      const type = String(exercise.exerciseType || "").toLowerCase();
+      const isCardio = type.includes("cardio");
+      const weightKg = log.weightKg === "" || log.weightKg == null
+        ? null
+        : Number(log.weightKg);
+      const durationMinutes = log.durationMinutes === "" || log.durationMinutes == null
+        ? null
+        : Number(log.durationMinutes);
+
+      if (isCardio && (!Number.isFinite(durationMinutes) || durationMinutes <= 0)) {
+        return res.status(400).json({
+          message: `Registra el tiempo realizado en ${exercise.exerciseName}.`,
+        });
+      }
+
+      if (!isCardio && type.includes("fuerza") && (!Number.isFinite(weightKg) || weightKg < 0)) {
+        return res.status(400).json({
+          message: `Registra el peso utilizado en ${exercise.exerciseName}.`,
+        });
+      }
+
+      normalizedLogs.push({
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        exerciseType: exercise.exerciseType || "General",
+        weightKg: isCardio ? null : weightKg,
+        durationMinutes: isCardio ? durationMinutes : null,
+        notes: String(log.notes || "").trim() || null,
+      });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [completionResult] = await connection.execute(
+        `INSERT INTO routine_completions (routine_id, user_id, total_exercises)
+         VALUES (?, ?, ?)`,
+        [routineId, req.userId, routineExercises.length]
+      );
+
+      for (const log of normalizedLogs) {
+        await connection.execute(
+          `INSERT INTO exercise_logs
+           (completion_id, routine_id, exercise_id, exercise_name, exercise_type,
+            weight_kg, duration_minutes, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            completionResult.insertId,
+            routineId,
+            log.exerciseId,
+            log.exerciseName,
+            log.exerciseType,
+            log.weightKg,
+            log.durationMinutes,
+            log.notes,
+          ]
+        );
+      }
+
+      await connection.commit();
+      return res.status(201).json({
+        message: "Rutina completada y progreso guardado.",
+        completionId: String(completionResult.insertId),
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error("Complete routine error:", error.message);
+    return res.status(500).json({ message: "No se pudo guardar el progreso de la rutina." });
+  }
+});
+
+app.get(
+  "/api/trainer/users/:userId/progress",
+  requireAuth,
+  requireRole("entrenador"),
+  async (req, res) => {
+    try {
+      const [assignment] = await pool.execute(
+        `SELECT id FROM trainer_user_assignments
+         WHERE trainer_id = ? AND user_id = ? LIMIT 1`,
+        [req.userId, req.params.userId]
+      );
+
+      if (!assignment.length) {
+        return res.status(403).json({
+          message: "Solo puedes consultar el progreso de tus usuarios.",
+        });
+      }
+
+      const [rows] = await pool.execute(
+        `SELECT rc.id AS completionId, rc.completed_at AS completedAt,
+                rc.total_exercises AS totalExercises, r.title AS routineTitle,
+                el.exercise_name AS exerciseName, el.exercise_type AS exerciseType,
+                el.weight_kg AS weightKg, el.duration_minutes AS durationMinutes,
+                el.notes
+         FROM routine_completions rc
+         INNER JOIN routines r ON r.id = rc.routine_id
+         LEFT JOIN exercise_logs el ON el.completion_id = rc.id
+         WHERE rc.user_id = ? AND r.trainer_id = ?
+         ORDER BY rc.completed_at DESC, el.id ASC`,
+        [req.params.userId, req.userId]
+      );
+
+      const completionsById = new Map();
+      for (const row of rows) {
+        const completionId = String(row.completionId);
+        if (!completionsById.has(completionId)) {
+          completionsById.set(completionId, {
+            id: completionId,
+            routineTitle: row.routineTitle,
+            completedAt: row.completedAt,
+            totalExercises: Number(row.totalExercises || 0),
+            exercises: [],
+          });
+        }
+
+        if (row.exerciseName) {
+          completionsById.get(completionId).exercises.push({
+            name: row.exerciseName,
+            type: row.exerciseType,
+            weightKg: row.weightKg === null ? null : Number(row.weightKg),
+            durationMinutes:
+              row.durationMinutes === null ? null : Number(row.durationMinutes),
+            notes: row.notes,
+          });
+        }
+      }
+
+      return res.json(Array.from(completionsById.values()));
+    } catch (error) {
+      console.error("Get trainee progress error:", error.message);
+      return res.status(500).json({ message: "No se pudo consultar el progreso." });
+    }
+  }
+);
+
 app.get("/api/exercises/custom", requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.execute(

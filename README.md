@@ -68,6 +68,12 @@ WHERE email = 'correo-del-administrador@ejemplo.com';
 
 Los administradores pueden consultar usuarios con `GET /api/users` y cambiar roles con `PATCH /api/users/:userId/role` enviando `{ "role": "entrenador" }`.
 
+Los entrenadores pueden consultar los usuarios con rol `usuario` mediante `GET /api/trainer/users`, asignarlos con `POST /api/trainer/users/:userId` y liberarlos con `DELETE /api/trainer/users/:userId`. La tabla `trainer_user_assignments` impide que un usuario sea asignado a dos entrenadores al mismo tiempo.
+
+Los entrenadores crean rutinas con `POST /api/trainer/users/:userId/routines`, usando ejercicios personalizados registrados por ellos. Los usuarios consultan sus rutinas asignadas con `GET /api/routines`; estas se almacenan en `routines` y `routine_exercises`.
+
+Al completar una rutina, la app registra una sesión en `routine_completions` y el detalle de cada ejercicio en `exercise_logs`. En ejercicios de fuerza guarda el peso utilizado y en ejercicios de cardio guarda los minutos realizados. El entrenador consulta este historial con `GET /api/trainer/users/:userId/progress`.
+
 Para levantar el backend local:
 
 ```bash
