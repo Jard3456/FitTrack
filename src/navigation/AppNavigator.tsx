@@ -84,7 +84,9 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
         })}
       >
         <Tab.Screen name="Inicio" component={HomeScreen} />
-        <Tab.Screen name="Rutinas" component={RoutinesScreen} />
+        <Tab.Screen name="Rutinas">
+          {() => <RoutinesScreen userRole={userRole} />}
+        </Tab.Screen>
         <Tab.Screen name="Progreso" component={ProgressScreen} />
         <Tab.Screen
           name="Ejercicios"

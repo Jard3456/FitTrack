@@ -8,8 +8,22 @@ import {
 export type UserProgress = {
   name?: string;
   weight?: string;
+  targetWeight?: string;
+  startingWeight?: string;
   height?: string;
   objective?: string;
+  lastWeightDate?: string | null;
+  canRecordWeight?: boolean;
+  weightHistory?: Array<{
+    weight: string;
+    recordedDate: string;
+  }>;
+  weeklyActivity?: {
+    weekStart: string;
+    weekEnd: string;
+    completedTrainings: number;
+    completedRoutines: number;
+  };
 };
 
 export const isDatabaseConfigured = isApiConfigured;
@@ -111,4 +125,10 @@ export async function saveUserProgress(progress: UserProgress) {
       response.status
     );
   }
+
+  return (await response.json()) as {
+    message: string;
+    canRecordWeight?: boolean;
+    lastWeightDate?: string | null;
+  };
 }

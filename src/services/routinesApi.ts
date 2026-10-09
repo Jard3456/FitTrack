@@ -27,20 +27,48 @@ export type ExerciseCompletionInput = {
   notes?: string;
 };
 
-export type TraineeProgress = {
+export type TraineeRoutineExercise = {
+  name: string;
+  type: string;
+  logged: boolean;
+  weightKg: number | null;
+  durationMinutes: number | null;
+  notes: string | null;
+};
+
+export type TraineeRoutine = {
   id: string;
-  routineTitle: string;
+  title: string;
+  level: string;
+  durationMinutes: number;
   scheduledDate: string;
-  completedAt: string;
+  period: "past" | "current" | "future";
+  completed: boolean;
+  completedAt: string | null;
   totalExercises: number;
-  exercises: Array<{
-    name: string;
-    type: string;
-    weightKg: number | null;
-    durationMinutes: number | null;
-    notes: string | null;
+  exercises: TraineeRoutineExercise[];
+};
+
+export type TraineeGoal = {
+  currentWeight: number | string | null;
+  targetWeight: number | string | null;
+  startingWeight: number | string | null;
+  weightHistory: Array<{
+    weight: number | string;
+    recordedDate: string;
   }>;
 };
+
+export type TraineeActivity = {
+  goal: TraineeGoal;
+  routines: {
+    past: TraineeRoutine[];
+    current: TraineeRoutine[];
+    future: TraineeRoutine[];
+  };
+};
+
+export type TraineeProgress = TraineeRoutine;
 
 async function getAuthHeaders() {
   const session = await getStoredSession();
@@ -137,7 +165,7 @@ export async function completeRoutine(
   }
 }
 
-export async function getTraineeProgress(userId: string): Promise<TraineeProgress[]> {
+export async function getTraineeProgress(userId: string): Promise<TraineeActivity> {
   let response: Response;
 
   try {
@@ -154,5 +182,5 @@ export async function getTraineeProgress(userId: string): Promise<TraineeProgres
     );
   }
 
-  return (await response.json()) as TraineeProgress[];
+  return (await response.json()) as TraineeActivity;
 }

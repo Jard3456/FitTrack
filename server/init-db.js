@@ -31,6 +31,17 @@ async function main() {
     console.log("Columna de roles agregada a users.");
   }
 
+  const [targetWeightColumn] = await connection.query(
+    "SHOW COLUMNS FROM fittrack.user_progress LIKE 'target_weight'"
+  );
+
+  if (!targetWeightColumn.length) {
+    await connection.query(
+      "ALTER TABLE fittrack.user_progress ADD COLUMN target_weight DECIMAL(6,2) NULL AFTER weight"
+    );
+    console.log("Columna de meta de peso agregada a user_progress.");
+  }
+
   const [scheduledDateColumn] = await connection.query(
     "SHOW COLUMNS FROM fittrack.routines LIKE 'scheduled_date'"
   );

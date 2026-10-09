@@ -37,6 +37,9 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
   const [height, setHeight] = useState("--");
   const [objective, setObjective] = useState("--");
   const [bmi, setBmi] = useState("--");
+  const [weeklyActivity, setWeeklyActivity] = useState<
+    UserProgress["weeklyActivity"]
+  >();
 
   const [name, setName] = useState("JARD GAMES");
   const [editing, setEditing] = useState(false);
@@ -54,6 +57,7 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
         setObjective(user.objective || "--");
         setBmi(formatBmi(user.weight || "", user.height || "") || "--");
         setName(user.name || "JARD GAMES");
+        setWeeklyActivity(user.weeklyActivity);
       }
 
       if (isDatabaseConfigured) {
@@ -70,6 +74,7 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
             formatBmi(mergedUser.weight || "", mergedUser.height || "") || "--"
           );
           setName(mergedUser.name || "JARD GAMES");
+          setWeeklyActivity(mergedUser.weeklyActivity);
           await AsyncStorage.setItem(
             PROGRESS_STORAGE_KEY,
             JSON.stringify(mergedUser)
@@ -261,16 +266,27 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
 
       {/* Estadísticas */}
 
+      <View style={styles.statsHeader}>
+        <Text style={styles.statsTitle}>Actividad de esta semana</Text>
+        <Text style={styles.statsCaption}>
+          Registros realizados desde el lunes hasta hoy
+        </Text>
+      </View>
+
       <View style={styles.statsContainer}>
 
         <View style={styles.statCard}>
 
           <Text style={styles.number}>
-            24
+            {weeklyActivity?.completedTrainings ?? 0}
           </Text>
 
           <Text style={styles.statText}>
             Entrenamientos
+          </Text>
+
+          <Text style={styles.statCaption}>
+            ejercicios registrados
           </Text>
 
         </View>
@@ -278,11 +294,15 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
         <View style={styles.statCard}>
 
           <Text style={styles.number}>
-            18
+            {weeklyActivity?.completedRoutines ?? 0}
           </Text>
 
           <Text style={styles.statText}>
             Rutinas completadas
+          </Text>
+
+          <Text style={styles.statCaption}>
+            esta semana
           </Text>
 
         </View>
@@ -428,6 +448,23 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 
+  statsHeader: {
+    marginTop: 24,
+    marginBottom: 2,
+  },
+
+  statsTitle: {
+    color: "#111827",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+
+  statsCaption: {
+    color: "#64748B",
+    fontSize: 12,
+    marginTop: 4,
+  },
+
   statCard: {
     backgroundColor: "#FFFFFF",
     width: "48%",
@@ -446,6 +483,13 @@ const styles = StyleSheet.create({
   statText: {
     marginTop: 8,
     color: "#6B7280",
+    textAlign: "center",
+  },
+
+  statCaption: {
+    color: "#94A3B8",
+    fontSize: 11,
+    marginTop: 4,
     textAlign: "center",
   },
 

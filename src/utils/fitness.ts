@@ -31,3 +31,22 @@ export function formatBmi(weight: string, height: string) {
   const bmi = calculateBmi(weight, height);
   return bmi === null ? null : bmi.toFixed(1);
 }
+
+export function calculateWeightProgress(
+  currentWeight: string,
+  targetWeight: string,
+  startingWeight: string
+) {
+  const current = parseMeasurement(currentWeight);
+  const target = parseMeasurement(targetWeight);
+  const starting = parseMeasurement(startingWeight);
+
+  if (current === null || target === null || starting === null) return null;
+  if (starting === target) return current === target ? 1 : 0;
+
+  const progress = starting > target
+    ? (starting - current) / (starting - target)
+    : (current - starting) / (target - starting);
+
+  return Math.min(1, Math.max(0, progress));
+}

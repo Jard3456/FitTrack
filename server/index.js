@@ -626,48 +626,109 @@ app.get(
         });
       }
 
+      const [goalRows] = await pool.execute(
+        `SELECT p.weight AS currentWeight,
+                p.target_weight AS targetWeight,
+                COALESCE(
+                  (SELECT wh.weight FROM weight_history wh
+                   WHERE wh.user_id = u.id
+                   ORDER BY wh.recorded_date ASC, wh.id ASC LIMIT 1),
+                  p.weight
+                ) AS startingWeight
+         FROM users u
+         LEFT JOIN user_progress p ON p.user_id = u.id
+         WHERE u.id = ? LIMIT 1`,
+        [req.params.userId]
+      );
+
+      const [weightHistory] = await pool.execute(
+        `SELECT weight, DATE_FORMAT(recorded_date, '%Y-%m-%d') AS recordedDate
+         FROM weight_history
+         WHERE user_id = ?
+         ORDER BY recorded_date DESC, id DESC`,
+        [req.params.userId]
+      );
+
       const [rows] = await pool.execute(
-      `SELECT rc.id AS completionId, rc.completed_at AS completedAt,
-                rc.total_exercises AS totalExercises, r.title AS routineTitle,
+        `SELECT r.id, r.title, r.level,
+                r.duration_minutes AS durationMinutes,
                 DATE_FORMAT(r.scheduled_date, '%Y-%m-%d') AS scheduledDate,
-                el.exercise_name AS exerciseName, el.exercise_type AS exerciseType,
-                el.weight_kg AS weightKg, el.duration_minutes AS durationMinutes,
+                CASE
+                  WHEN r.scheduled_date < CURRENT_DATE THEN 'past'
+                  WHEN r.scheduled_date > CURRENT_DATE THEN 'future'
+                  ELSE 'current'
+                END AS period,
+                rc.id AS completionId, rc.completed_at AS completedAt,
+                rc.total_exercises AS totalExercises,
+                ce.id AS exerciseId, ce.name AS exerciseName,
+                ce.type AS exerciseType,
+                el.weight_kg AS weightKg,
+                el.duration_minutes AS durationMinutesLogged,
                 el.notes
-         FROM routine_completions rc
-         INNER JOIN routines r ON r.id = rc.routine_id
-         LEFT JOIN exercise_logs el ON el.completion_id = rc.id
-         WHERE rc.user_id = ? AND r.trainer_id = ?
-         ORDER BY rc.completed_at DESC, el.id ASC`,
+         FROM routines r
+         LEFT JOIN routine_exercises re ON re.routine_id = r.id
+         LEFT JOIN custom_exercises ce ON ce.id = re.exercise_id
+         LEFT JOIN routine_completions rc
+           ON rc.routine_id = r.id AND rc.user_id = r.user_id
+         LEFT JOIN exercise_logs el
+           ON el.completion_id = rc.id AND el.exercise_id = ce.id
+         WHERE r.user_id = ? AND r.trainer_id = ?
+         ORDER BY r.scheduled_date DESC, re.exercise_order ASC`,
         [req.params.userId, req.userId]
       );
 
-      const completionsById = new Map();
+      const routinesById = new Map();
       for (const row of rows) {
-        const completionId = String(row.completionId);
-        if (!completionsById.has(completionId)) {
-          completionsById.set(completionId, {
-            id: completionId,
-            routineTitle: row.routineTitle,
+        const routineId = String(row.id);
+        if (!routinesById.has(routineId)) {
+          routinesById.set(routineId, {
+            id: routineId,
+            title: row.title,
+            level: row.level,
+            durationMinutes: Number(row.durationMinutes || 0),
             scheduledDate: row.scheduledDate,
+            period: row.period,
+            completed: row.completionId !== null,
             completedAt: row.completedAt,
             totalExercises: Number(row.totalExercises || 0),
             exercises: [],
           });
         }
 
-        if (row.exerciseName) {
-          completionsById.get(completionId).exercises.push({
+        if (row.exerciseId !== null) {
+          routinesById.get(routineId).exercises.push({
             name: row.exerciseName,
             type: row.exerciseType,
+            logged: row.completionId !== null,
             weightKg: row.weightKg === null ? null : Number(row.weightKg),
             durationMinutes:
-              row.durationMinutes === null ? null : Number(row.durationMinutes),
+              row.durationMinutesLogged === null
+                ? null
+                : Number(row.durationMinutesLogged),
             notes: row.notes,
           });
         }
       }
 
-      return res.json(Array.from(completionsById.values()));
+      const routines = Array.from(routinesById.values()).map((routine) => ({
+        ...routine,
+        totalExercises: routine.totalExercises || routine.exercises.length,
+      }));
+
+      const goal = goalRows[0] || {};
+      return res.json({
+        goal: {
+          currentWeight: goal.currentWeight ?? null,
+          targetWeight: goal.targetWeight ?? null,
+          startingWeight: goal.startingWeight ?? null,
+          weightHistory,
+        },
+        routines: {
+          past: routines.filter((routine) => routine.period === "past"),
+          current: routines.filter((routine) => routine.period === "current"),
+          future: routines.filter((routine) => routine.period === "future"),
+        },
+      });
     } catch (error) {
       console.error("Get trainee progress error:", error.message);
       return res.status(500).json({ message: "No se pudo consultar el progreso." });
@@ -765,7 +826,22 @@ app.get("/api/progress/:userId", requireAuth, async (req, res) => {
 
   try {
     const [rows] = await pool.execute(
-      `SELECT u.name, p.weight, p.height, p.objective
+      `SELECT u.name, p.weight, p.height, p.objective,
+              p.target_weight AS targetWeight,
+              COALESCE(
+                (SELECT wh.weight FROM weight_history wh
+                 WHERE wh.user_id = u.id
+                 ORDER BY wh.recorded_date ASC, wh.id ASC LIMIT 1),
+                p.weight
+              ) AS startingWeight,
+              (SELECT DATE_FORMAT(wh.recorded_date, '%Y-%m-%d')
+               FROM weight_history wh
+               WHERE wh.user_id = u.id
+               ORDER BY wh.recorded_date DESC, wh.id DESC LIMIT 1) AS lastWeightDate,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM weight_history wh
+                WHERE wh.user_id = u.id AND wh.recorded_date = CURRENT_DATE
+              ) THEN 0 ELSE 1 END AS canRecordWeight
        FROM users u
        LEFT JOIN user_progress p ON p.user_id = u.id
        WHERE u.id = ? LIMIT 1`,
@@ -773,7 +849,45 @@ app.get("/api/progress/:userId", requireAuth, async (req, res) => {
     );
 
     if (!rows.length) return res.status(404).json({ message: "Usuario no encontrado." });
-    return res.json(rows[0]);
+
+    const [history] = await pool.execute(
+      `SELECT weight, DATE_FORMAT(recorded_date, '%Y-%m-%d') AS recordedDate
+       FROM weight_history
+       WHERE user_id = ?
+       ORDER BY recorded_date DESC, id DESC`,
+      [req.userId]
+    );
+
+    const [weeklyRows] = await pool.execute(
+      `SELECT
+         DATE_FORMAT(
+           DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY),
+           '%Y-%m-%d'
+         ) AS weekStart,
+         DATE_FORMAT(CURRENT_DATE, '%Y-%m-%d') AS weekEnd,
+         COUNT(DISTINCT el.id) AS completedTrainings,
+         COUNT(DISTINCT rc.id) AS completedRoutines
+       FROM routine_completions rc
+       LEFT JOIN exercise_logs el ON el.completion_id = rc.id
+       WHERE rc.user_id = ?
+         AND DATE(rc.completed_at) BETWEEN
+           DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY)
+           AND CURRENT_DATE`,
+      [req.userId]
+    );
+
+    const weeklyActivity = weeklyRows[0] || {};
+
+    return res.json({
+      ...rows[0],
+      weightHistory: history,
+      weeklyActivity: {
+        weekStart: weeklyActivity.weekStart,
+        weekEnd: weeklyActivity.weekEnd,
+        completedTrainings: Number(weeklyActivity.completedTrainings || 0),
+        completedRoutines: Number(weeklyActivity.completedRoutines || 0),
+      },
+    });
   } catch (error) {
     console.error("Get progress error:", error.message);
     return res.status(500).json({ message: "No se pudo consultar el progreso." });
@@ -784,29 +898,92 @@ app.put("/api/progress/:userId", requireAuth, async (req, res) => {
   if (!ensureOwnUser(req, res)) return;
 
   const name = String(req.body?.name || "").trim();
-  const weight = req.body?.weight || null;
+  const hasWeight = req.body?.weight !== undefined &&
+    req.body?.weight !== null &&
+    String(req.body.weight).trim() !== "";
+  const hasTargetWeight = req.body?.targetWeight !== undefined &&
+    req.body?.targetWeight !== null &&
+    String(req.body.targetWeight).trim() !== "";
+  const weight = hasWeight ? Number(String(req.body.weight).replace(",", ".")) : null;
+  const targetWeight = hasTargetWeight
+    ? Number(String(req.body.targetWeight).replace(",", "."))
+    : null;
   const height = req.body?.height || null;
   const objective = req.body?.objective || null;
+
+  if (hasWeight && (!Number.isFinite(weight) || weight <= 0)) {
+    return res.status(400).json({ message: "El peso debe ser un número mayor que cero." });
+  }
+
+  if (hasTargetWeight && (!Number.isFinite(targetWeight) || targetWeight <= 0)) {
+    return res.status(400).json({ message: "La meta de peso debe ser un número mayor que cero." });
+  }
 
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
+
+    const [existingProgress] = await connection.execute(
+      "SELECT weight, target_weight, height, objective FROM user_progress WHERE user_id = ? LIMIT 1",
+      [req.userId]
+    );
+    const currentProgress = existingProgress[0] || {};
+
+    const [todayWeightEntries] = await connection.execute(
+      `SELECT id, weight FROM weight_history
+       WHERE user_id = ? AND recorded_date = CURRENT_DATE
+       LIMIT 1`,
+      [req.userId]
+    );
+
+    if (hasWeight && todayWeightEntries.length) {
+      const todayWeight = Number(todayWeightEntries[0].weight);
+      if (todayWeight.toFixed(2) !== Number(weight).toFixed(2)) {
+        await connection.rollback();
+        return res.status(409).json({
+          message: "Ya registraste tu peso de hoy. Podrás actualizarlo nuevamente mañana.",
+        });
+      }
+    }
+
     if (name) {
       await connection.execute("UPDATE users SET name = ? WHERE id = ?", [
         name,
         req.userId,
       ]);
     }
+
+    if (hasWeight && !todayWeightEntries.length) {
+      await connection.execute(
+        `INSERT INTO weight_history (user_id, weight, recorded_date)
+         VALUES (?, ?, CURRENT_DATE)`,
+        [req.userId, weight]
+      );
+    }
+
     await connection.execute(
-      `INSERT INTO user_progress (user_id, weight, height, objective)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO user_progress (user_id, weight, target_weight, height, objective)
+       VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         weight = VALUES(weight), height = VALUES(height), objective = VALUES(objective)`,
-      [req.userId, weight, height, objective]
+         weight = VALUES(weight), target_weight = VALUES(target_weight),
+         height = VALUES(height), objective = VALUES(objective)`,
+      [
+        req.userId,
+        hasWeight ? weight : currentProgress.weight || null,
+        hasTargetWeight ? targetWeight : currentProgress.target_weight || null,
+        height || currentProgress.height || null,
+        objective || currentProgress.objective || null,
+      ]
     );
     await connection.commit();
-    return res.json({ message: "Progreso guardado." });
+    return res.json({
+      message: "Progreso guardado.",
+      canRecordWeight: !todayWeightEntries.length && !hasWeight,
+      lastWeightDate: hasWeight || todayWeightEntries.length
+        ? new Date().toISOString().slice(0, 10)
+        : null,
+    });
   } catch (error) {
     await connection.rollback();
     console.error("Save progress error:", error.message);

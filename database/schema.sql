@@ -20,12 +20,26 @@ CREATE TABLE IF NOT EXISTS user_progress (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id BIGINT UNSIGNED NOT NULL,
   weight DECIMAL(6,2) NULL,
+  target_weight DECIMAL(6,2) NULL,
   height DECIMAL(4,2) NULL,
   objective VARCHAR(120) NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_progress_user (user_id),
   CONSTRAINT fk_progress_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS weight_history (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  weight DECIMAL(6,2) NOT NULL,
+  recorded_date DATE NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_weight_history_user_date (user_id, recorded_date),
+  KEY idx_weight_history_user (user_id),
+  CONSTRAINT fk_weight_history_user
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS custom_exercises (

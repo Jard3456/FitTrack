@@ -24,9 +24,11 @@ import { getCustomExercises } from "../services/customExercisesApi";
 import {
   createRoutineForUser,
   getTraineeProgress,
-  TraineeProgress,
+  TraineeActivity,
+  TraineeRoutine,
 } from "../services/routinesApi";
 import { Exercise } from "../types/exercise";
+import { calculateWeightProgress } from "../utils/fitness";
 
 type UserFilter = "todos" | "disponibles" | "mios";
 
@@ -50,6 +52,24 @@ function formatLocalDate(date = new Date()) {
 function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function formatWeight(value: number | string | null | undefined) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return "Sin registro";
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(1)} kg` : "Sin registro";
+}
+
+function formatRoutineDate(value: string) {
+  const date = parseLocalDate(value);
+  return date.toLocaleDateString("es-GT", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function RoutineCalendar({
@@ -174,7 +194,7 @@ export default function TrainerUsersScreen() {
   const [loadingExercises, setLoadingExercises] = useState(false);
   const [savingRoutine, setSavingRoutine] = useState(false);
   const [progressUser, setProgressUser] = useState<TrainerUser | null>(null);
-  const [progressEntries, setProgressEntries] = useState<TraineeProgress[]>([]);
+  const [progressData, setProgressData] = useState<TraineeActivity | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(false);
 
   const loadUsers = useCallback(async (refresh = false) => {
@@ -353,11 +373,11 @@ export default function TrainerUsersScreen() {
 
   const openProgressModal = async (user: TrainerUser) => {
     setProgressUser(user);
-    setProgressEntries([]);
+    setProgressData(null);
     setLoadingProgress(true);
 
     try {
-      setProgressEntries(await getTraineeProgress(user.id));
+      setProgressData(await getTraineeProgress(user.id));
     } catch (progressError) {
       setProgressUser(null);
       Alert.alert(
@@ -374,6 +394,89 @@ export default function TrainerUsersScreen() {
   const closeProgressModal = () => {
     if (!loadingProgress) setProgressUser(null);
   };
+
+  const goalProgress = useMemo(() => {
+    if (!progressData?.goal) return null;
+
+    return calculateWeightProgress(
+      String(progressData.goal.currentWeight ?? ""),
+      String(progressData.goal.targetWeight ?? ""),
+      String(progressData.goal.startingWeight ?? "")
+    );
+  }, [progressData]);
+
+  const renderRoutineGroup = (
+    title: string,
+    routines: TraineeRoutine[],
+    icon: keyof typeof Ionicons.glyphMap
+  ) => (
+    <View style={styles.routineSection}>
+      <View style={styles.routineSectionHeader}>
+        <View style={styles.routineSectionTitleRow}>
+          <Ionicons name={icon} size={19} color="#2563EB" />
+          <Text style={styles.routineSectionTitle}>{title}</Text>
+        </View>
+        <Text style={styles.routineSectionCount}>{routines.length}</Text>
+      </View>
+
+      {!routines.length ? (
+        <Text style={styles.noRoutineText}>No hay rutinas en esta sección.</Text>
+      ) : (
+        routines.map((routine) => (
+          <View key={routine.id} style={styles.routineHistoryCard}>
+            <Text style={styles.progressRoutine}>{routine.title}</Text>
+            <View style={styles.routineStatusRow}>
+              <Text style={styles.progressDate}>
+                {formatRoutineDate(routine.scheduledDate)} · {routine.level} · {routine.durationMinutes} min
+              </Text>
+              <Text
+                style={[
+                  styles.routineStatus,
+                  routine.completed
+                    ? styles.completedStatus
+                    : routine.period === "past"
+                      ? styles.missedStatus
+                      : styles.pendingStatus,
+                ]}
+              >
+                {routine.completed
+                  ? "Completada"
+                  : routine.period === "past"
+                    ? "No completada"
+                    : "Pendiente"}
+              </Text>
+            </View>
+            <Text style={styles.progressSummary}>
+              {routine.totalExercises} {routine.totalExercises === 1 ? "ejercicio" : "ejercicios"}
+              {routine.completedAt
+                ? ` · Completada el ${new Date(routine.completedAt).toLocaleDateString("es-GT")}`
+                : ""}
+            </Text>
+
+            {routine.exercises.map((exercise, index) => (
+              <View key={`${routine.id}-${index}`} style={styles.progressExercise}>
+                <Text style={styles.progressExerciseName}>{exercise.name}</Text>
+                <Text style={styles.progressExerciseValue}>
+                  {routine.completed && exercise.logged
+                    ? exercise.type.toLowerCase().includes("cardio")
+                      ? `${exercise.durationMinutes ?? 0} minutos`
+                      : exercise.weightKg !== null
+                        ? `${exercise.weightKg} kg`
+                        : "Completado"
+                    : routine.period === "past"
+                      ? "Sin registro"
+                      : "Pendiente"}
+                </Text>
+                {exercise.notes ? (
+                  <Text style={styles.progressNotes}>{exercise.notes}</Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ))
+      )}
+    </View>
+  );
 
   if (loading) {
     return (
@@ -689,40 +792,66 @@ export default function TrainerUsersScreen() {
               </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
-                {!progressEntries.length ? (
-                  <View style={styles.noExercisesCard}>
-                    <Text style={styles.noExercisesText}>
-                      Este usuario todavía no ha completado una rutina.
-                    </Text>
-                  </View>
-                ) : (
-                  progressEntries.map((entry) => (
-                    <View key={entry.id} style={styles.progressCard}>
-                      <Text style={styles.progressRoutine}>{entry.routineTitle}</Text>
-                      <Text style={styles.progressDate}>
-                        Programada: {entry.scheduledDate} • Completada: {new Date(entry.completedAt).toLocaleString("es-GT")}
+                {progressData ? (
+                  <>
+                    <View style={styles.traineeGoalCard}>
+                    <View style={styles.goalHeader}>
+                      <View>
+                        <Text style={styles.goalTitle}>Meta de peso</Text>
+                        <Text style={styles.goalSubtitle}>
+                          Progreso de {progressUser?.name}
+                        </Text>
+                      </View>
+                      <Text style={styles.goalPercentage}>
+                        {goalProgress === null ? "--" : `${Math.round(goalProgress * 100)}%`}
                       </Text>
-                      <Text style={styles.progressSummary}>
-                        {entry.totalExercises} ejercicios completados
-                      </Text>
-                      {entry.exercises.map((exercise, index) => (
-                        <View key={`${entry.id}-${index}`} style={styles.progressExercise}>
-                          <Text style={styles.progressExerciseName}>{exercise.name}</Text>
-                          <Text style={styles.progressExerciseValue}>
-                            {exercise.type.toLowerCase().includes("cardio")
-                              ? `${exercise.durationMinutes ?? 0} minutos`
-                              : exercise.weightKg !== null
-                                ? `${exercise.weightKg} kg`
-                                : "Completado"}
-                          </Text>
-                          {exercise.notes ? (
-                            <Text style={styles.progressNotes}>{exercise.notes}</Text>
-                          ) : null}
-                        </View>
-                      ))}
                     </View>
-                  ))
-                )}
+
+                    <View style={styles.goalProgressTrack}>
+                      <View
+                        style={[
+                          styles.goalProgressFill,
+                          { width: `${(goalProgress ?? 0) * 100}%` },
+                        ]}
+                      />
+                    </View>
+
+                    <View style={styles.goalValuesRow}>
+                      <Text style={styles.goalValueText}>
+                        Inicio: {formatWeight(progressData?.goal.startingWeight)}
+                      </Text>
+                      <Text style={styles.goalValueText}>
+                        Actual: {formatWeight(progressData?.goal.currentWeight)}
+                      </Text>
+                      <Text style={styles.goalValueText}>
+                        Meta: {formatWeight(progressData?.goal.targetWeight)}
+                      </Text>
+                    </View>
+
+                    {goalProgress === null ? (
+                      <Text style={styles.goalEmptyText}>
+                        Este usuario todavía no ha establecido una meta y un peso válido.
+                      </Text>
+                    ) : null}
+                    </View>
+
+                  {renderRoutineGroup(
+                    "Rutina actual",
+                    progressData.routines.current,
+                    "today-outline"
+                  )}
+                  {renderRoutineGroup(
+                    "Rutinas futuras",
+                    progressData.routines.future,
+                    "calendar-outline"
+                  )}
+                  {renderRoutineGroup(
+                    "Rutinas pasadas",
+                    progressData.routines.past,
+                    "time-outline"
+                  )}
+                  </>
+                ) : null}
               </ScrollView>
             )}
           </View>
@@ -983,6 +1112,87 @@ const styles = StyleSheet.create({
   },
   saveRoutineText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
   progressLoading: { alignItems: "center", padding: 24 },
+  traineeGoalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+  },
+  goalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  goalTitle: { color: "#1E293B", fontSize: 17, fontWeight: "bold" },
+  goalSubtitle: { color: "#64748B", fontSize: 12, marginTop: 3 },
+  goalPercentage: { color: "#2563EB", fontSize: 25, fontWeight: "bold" },
+  goalProgressTrack: {
+    height: 12,
+    backgroundColor: "#DBEAFE",
+    borderRadius: 6,
+    overflow: "hidden",
+    marginTop: 15,
+  },
+  goalProgressFill: {
+    height: "100%",
+    backgroundColor: "#2563EB",
+    borderRadius: 6,
+  },
+  goalValuesRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+    gap: 6,
+  },
+  goalValueText: { color: "#64748B", fontSize: 11, flex: 1 },
+  goalEmptyText: { color: "#B45309", fontSize: 12, marginTop: 10 },
+  routineSection: { marginBottom: 16 },
+  routineSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  routineSectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  routineSectionTitle: { color: "#1E293B", fontSize: 17, fontWeight: "bold" },
+  routineSectionCount: {
+    color: "#1D4ED8",
+    backgroundColor: "#DBEAFE",
+    borderRadius: 10,
+    minWidth: 24,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  noRoutineText: {
+    color: "#64748B",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 13,
+  },
+  routineHistoryCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 15,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  routineStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 4,
+  },
+  routineStatus: { fontSize: 11, fontWeight: "bold" },
+  completedStatus: { color: "#15803D" },
+  missedStatus: { color: "#B91C1C" },
+  pendingStatus: { color: "#B45309" },
   progressCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 15,
