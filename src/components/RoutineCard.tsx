@@ -8,6 +8,7 @@ interface Props {
   exercises: number;
   exerciseNames: string[];
   duration: string;
+  scheduledDate: string;
   completedCount: number;
   onPress: () => void;
   icon: keyof typeof Ionicons.glyphMap;
@@ -19,6 +20,7 @@ export default function RoutineCard({
   exercises,
   exerciseNames,
   duration,
+  scheduledDate,
   completedCount,
   onPress,
   icon,
@@ -43,6 +45,8 @@ export default function RoutineCard({
         <Text style={styles.details}>
           {exercises} ejercicios • {duration}
         </Text>
+
+        <Text style={styles.scheduledDate}>Programada: {scheduledDate}</Text>
 
         <Text style={styles.exerciseList} numberOfLines={2}>
           {exerciseNames.join(" • ")}
@@ -102,6 +106,12 @@ const styles = StyleSheet.create({
 
   details:{
     color:"#6B7280",
+    marginTop:5,
+  },
+  scheduledDate:{
+    color:"#2563EB",
+    fontSize:12,
+    fontWeight:"600",
     marginTop:5,
   },
 

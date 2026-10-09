@@ -40,6 +40,123 @@ const filters: Array<{
   { value: "mios", label: "Mis usuarios", icon: "person-outline" },
 ];
 
+function formatLocalDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function RoutineCalendar({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const selectedDate = parseLocalDate(value);
+  const [visibleMonth, setVisibleMonth] = useState(
+    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+  );
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const calendarDays = [
+    ...Array.from({ length: firstDayOffset }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+  const monthLabel = visibleMonth.toLocaleDateString("es-GT", {
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <View style={styles.calendar}>
+      <View style={styles.calendarHeader}>
+        <TouchableOpacity
+          style={styles.calendarArrow}
+          onPress={() => setVisibleMonth(new Date(year, month - 1, 1))}
+          disabled={disabled}
+        >
+          <Ionicons name="chevron-back" size={22} color="#2563EB" />
+        </TouchableOpacity>
+        <Text style={styles.calendarMonth}>{monthLabel}</Text>
+        <TouchableOpacity
+          style={styles.calendarArrow}
+          onPress={() => setVisibleMonth(new Date(year, month + 1, 1))}
+          disabled={disabled}
+        >
+          <Ionicons name="chevron-forward" size={22} color="#2563EB" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.calendarWeekRow}>
+        {["L", "M", "X", "J", "V", "S", "D"].map((day) => (
+          <Text key={day} style={styles.calendarWeekDay}>{day}</Text>
+        ))}
+      </View>
+
+      <View style={styles.calendarGrid}>
+        {calendarDays.map((day, index) => {
+          if (!day) return <View key={`empty-${index}`} style={styles.calendarDay} />;
+          const date = new Date(year, month, day);
+          const dateValue = formatLocalDate(date);
+          const selected = dateValue === value;
+          const isToday = dateValue === formatLocalDate();
+
+          return (
+            <TouchableOpacity
+              key={dateValue}
+              style={styles.calendarDay}
+              onPress={() => onChange(dateValue)}
+              disabled={disabled}
+              activeOpacity={0.8}
+            >
+              <View
+                style={[
+                  styles.calendarDayInner,
+                  isToday && styles.calendarToday,
+                  selected && styles.calendarSelected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.calendarDayText,
+                    isToday && styles.calendarTodayText,
+                    selected && styles.calendarSelectedText,
+                  ]}
+                >
+                  {day}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <TouchableOpacity
+        style={styles.calendarTodayButton}
+        onPress={() => {
+          const today = new Date();
+          setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+          onChange(formatLocalDate(today));
+        }}
+        disabled={disabled}
+      >
+        <Text style={styles.calendarTodayButtonText}>Seleccionar hoy</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function TrainerUsersScreen() {
   const [users, setUsers] = useState<TrainerUser[]>([]);
   const [activeFilter, setActiveFilter] = useState<UserFilter>("todos");
@@ -53,6 +170,7 @@ export default function TrainerUsersScreen() {
   const [routineTitle, setRoutineTitle] = useState("");
   const [routineLevel, setRoutineLevel] = useState("Intermedio");
   const [routineDuration, setRoutineDuration] = useState("45");
+  const [routineDate, setRoutineDate] = useState(formatLocalDate());
   const [loadingExercises, setLoadingExercises] = useState(false);
   const [savingRoutine, setSavingRoutine] = useState(false);
   const [progressUser, setProgressUser] = useState<TrainerUser | null>(null);
@@ -154,6 +272,7 @@ export default function TrainerUsersScreen() {
     setRoutineTitle(`Rutina para ${user.name}`);
     setRoutineLevel("Intermedio");
     setRoutineDuration("45");
+    setRoutineDate(formatLocalDate());
     setSelectedExerciseIds([]);
     setLoadingExercises(true);
 
@@ -188,10 +307,16 @@ export default function TrainerUsersScreen() {
     if (!routineUser) return;
 
     const durationMinutes = Number(routineDuration);
-    if (!routineTitle.trim() || !selectedExerciseIds.length || !Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+    if (
+      !routineTitle.trim() ||
+      !selectedExerciseIds.length ||
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes <= 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(routineDate)
+    ) {
       Alert.alert(
         "Datos incompletos",
-        "Escribe un título, una duración válida y selecciona al menos un ejercicio."
+        "Escribe un título, una fecha válida, una duración y selecciona al menos un ejercicio."
       );
       return;
     }
@@ -202,6 +327,7 @@ export default function TrainerUsersScreen() {
         title: routineTitle.trim(),
         level: routineLevel,
         durationMinutes,
+        scheduledDate: routineDate,
         exerciseIds: selectedExerciseIds,
       });
       setUsers((currentUsers) =>
@@ -443,6 +569,13 @@ export default function TrainerUsersScreen() {
                 editable={!savingRoutine}
               />
 
+              <Text style={styles.formLabel}>Fecha de la rutina</Text>
+              <RoutineCalendar
+                value={routineDate}
+                onChange={setRoutineDate}
+                disabled={savingRoutine}
+              />
+
               <Text style={styles.formLabel}>Nivel</Text>
               <View style={styles.levelOptions}>
                 {["Principiante", "Intermedio", "Avanzado"].map((level) => {
@@ -567,7 +700,7 @@ export default function TrainerUsersScreen() {
                     <View key={entry.id} style={styles.progressCard}>
                       <Text style={styles.progressRoutine}>{entry.routineTitle}</Text>
                       <Text style={styles.progressDate}>
-                        {new Date(entry.completedAt).toLocaleString("es-GT")}
+                        Programada: {entry.scheduledDate} • Completada: {new Date(entry.completedAt).toLocaleString("es-GT")}
                       </Text>
                       <Text style={styles.progressSummary}>
                         {entry.totalExercises} ejercicios completados
@@ -741,6 +874,69 @@ const styles = StyleSheet.create({
     color: "#111827",
     fontSize: 16,
   },
+  calendar: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 12,
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  calendarArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF6FF",
+  },
+  calendarMonth: {
+    color: "#1E293B",
+    fontSize: 16,
+    fontWeight: "bold",
+    textTransform: "capitalize",
+  },
+  calendarWeekRow: { flexDirection: "row", marginBottom: 4 },
+  calendarWeekDay: {
+    width: "14.2857%",
+    textAlign: "center",
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+  calendarDay: {
+    width: "14.2857%",
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarDayInner: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarDayText: { color: "#334155", fontSize: 14 },
+  calendarToday: { borderWidth: 1, borderColor: "#60A5FA" },
+  calendarTodayText: { color: "#2563EB", fontWeight: "bold" },
+  calendarSelected: { backgroundColor: "#2563EB", borderWidth: 0 },
+  calendarSelectedText: { color: "#FFFFFF", fontWeight: "bold" },
+  calendarTodayButton: {
+    alignSelf: "center",
+    backgroundColor: "#DBEAFE",
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  calendarTodayButtonText: { color: "#1D4ED8", fontSize: 12, fontWeight: "bold" },
   levelOptions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   levelOption: {
     borderWidth: 1,

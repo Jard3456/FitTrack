@@ -31,6 +31,23 @@ async function main() {
     console.log("Columna de roles agregada a users.");
   }
 
+  const [scheduledDateColumn] = await connection.query(
+    "SHOW COLUMNS FROM fittrack.routines LIKE 'scheduled_date'"
+  );
+
+  if (!scheduledDateColumn.length) {
+    await connection.query(
+      "ALTER TABLE fittrack.routines ADD COLUMN scheduled_date DATE NULL AFTER duration_minutes"
+    );
+  }
+
+  await connection.query(
+    "UPDATE fittrack.routines SET scheduled_date = CURRENT_DATE WHERE scheduled_date IS NULL"
+  );
+  await connection.query(
+    "ALTER TABLE fittrack.routines MODIFY COLUMN scheduled_date DATE NOT NULL"
+  );
+
   await connection.end();
   console.log("Base de datos y tablas de FitTrack listas.");
 }

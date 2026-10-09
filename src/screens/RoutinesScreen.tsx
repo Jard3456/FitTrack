@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -28,14 +28,47 @@ type ExerciseDraft = {
   notes: string;
 };
 
+type RoutineFilter = "today" | "future" | "past";
+
+function formatLocalDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 export default function RoutinesScreen() {
   const [routines, setRoutines] = useState<AssignedRoutine[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [activeFilter, setActiveFilter] = useState<RoutineFilter>("today");
   const [selectedRoutine, setSelectedRoutine] = useState<AssignedRoutine | null>(null);
   const [exerciseDrafts, setExerciseDrafts] = useState<Record<string, ExerciseDraft>>({});
   const [savingCompletion, setSavingCompletion] = useState(false);
+
+  const today = formatLocalDate();
+
+  const visibleRoutines = useMemo(() => {
+    return routines.filter((routine) => {
+      if (activeFilter === "today") return routine.scheduledDate === today;
+      if (activeFilter === "future") return routine.scheduledDate > today;
+      return routine.scheduledDate < today;
+    });
+  }, [activeFilter, routines, today]);
+
+  const getRoutineCount = (filter: RoutineFilter) => {
+    return routines.filter((routine) => {
+      if (filter === "today") return routine.scheduledDate === today;
+      if (filter === "future") return routine.scheduledDate > today;
+      return routine.scheduledDate < today;
+    }).length;
+  };
 
   const loadRoutines = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -73,6 +106,9 @@ export default function RoutinesScreen() {
     if (!savingCompletion) setSelectedRoutine(null);
   };
 
+  const canCompleteSelectedRoutine =
+    selectedRoutine?.scheduledDate === today && selectedRoutine.completedCount === 0;
+
   const updateExerciseDraft = (
     exerciseId: string,
     field: keyof ExerciseDraft,
@@ -93,6 +129,19 @@ export default function RoutinesScreen() {
 
   const saveCompletion = async () => {
     if (!selectedRoutine) return;
+
+    if (selectedRoutine.scheduledDate !== today) {
+      Alert.alert(
+        "Rutina fuera de fecha",
+        "Solo puedes completar la rutina programada para el día actual."
+      );
+      return;
+    }
+
+    if (selectedRoutine.completedCount > 0) {
+      Alert.alert("Rutina ya completada", "Esta rutina ya fue registrada como completada.");
+      return;
+    }
 
     const exercises: ExerciseCompletionInput[] = selectedRoutine.exercises.map((exercise) => {
       const draft = exerciseDrafts[exercise.id] ?? {
@@ -150,8 +199,33 @@ export default function RoutinesScreen() {
         </View>
       ) : null}
 
+      <View style={styles.tabs}>
+        {([
+          ["today", "Hoy"],
+          ["future", "Próximas"],
+          ["past", "Pasadas"],
+        ] as Array<[RoutineFilter, string]>).map(([filter, label]) => {
+          const selected = filter === activeFilter;
+          return (
+            <TouchableOpacity
+              key={filter}
+              style={[styles.tab, selected && styles.selectedTab]}
+              onPress={() => setActiveFilter(filter)}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.tabLabel, selected && styles.selectedTabLabel]}>
+                {label}
+              </Text>
+              <Text style={[styles.tabCount, selected && styles.selectedTabCount]}>
+                {getRoutineCount(filter)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <FlatList
-        data={routines}
+        data={visibleRoutines}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -161,14 +235,20 @@ export default function RoutinesScreen() {
             tintColor="#2563EB"
           />
         }
-        contentContainerStyle={routines.length ? styles.list : styles.emptyList}
+        contentContainerStyle={visibleRoutines.length ? styles.list : styles.emptyList}
         ListEmptyComponent={
           !error ? (
             <View style={styles.emptyCard}>
               <Ionicons name="barbell-outline" size={46} color="#94A3B8" />
-              <Text style={styles.emptyTitle}>Aún no tienes rutinas asignadas</Text>
+              <Text style={styles.emptyTitle}>
+                {activeFilter === "today"
+                  ? "No tienes una rutina para hoy"
+                  : activeFilter === "future"
+                    ? "No tienes rutinas futuras"
+                    : "No tienes rutinas pasadas"}
+              </Text>
               <Text style={styles.emptyText}>
-                Tu entrenador podrá crear una rutina con ejercicios personalizados.
+                Tu entrenador podrá programar rutinas con ejercicios personalizados.
               </Text>
             </View>
           ) : null
@@ -180,6 +260,7 @@ export default function RoutinesScreen() {
             exercises={item.exercises.length}
             exerciseNames={item.exercises.map((exercise) => exercise.name)}
             duration={`${item.durationMinutes} min`}
+            scheduledDate={formatDisplayDate(item.scheduledDate)}
             completedCount={item.completedCount}
             onPress={() => openRoutine(item)}
             icon="barbell"
@@ -199,7 +280,13 @@ export default function RoutinesScreen() {
               <View style={styles.modalHeadingContent}>
                 <Text style={styles.modalTitle}>{selectedRoutine?.title}</Text>
                 <Text style={styles.modalSubtitle}>
-                  Registra los datos y marca la rutina como completada.
+                  {canCompleteSelectedRoutine
+                    ? "Registra los datos y marca la rutina como completada."
+                    : selectedRoutine?.completedCount
+                      ? "Esta rutina ya está registrada como completada."
+                      : (selectedRoutine?.scheduledDate ?? "") > today
+                        ? "Esta rutina es futura y solo está disponible para consulta."
+                        : "Esta rutina pasada solo está disponible para consulta."}
                 </Text>
               </View>
               <TouchableOpacity onPress={closeRoutine} disabled={savingCompletion}>
@@ -226,71 +313,85 @@ export default function RoutinesScreen() {
                     </Text>
                     <Text style={styles.exerciseLogType}>{exercise.type}</Text>
 
-                    {isStrength ? (
+                    {canCompleteSelectedRoutine ? (
                       <>
-                        <Text style={styles.inputLabel}>Peso utilizado (kg) *</Text>
+                        {isStrength ? (
+                          <>
+                            <Text style={styles.inputLabel}>Peso utilizado (kg) *</Text>
+                            <TextInput
+                              style={styles.modalInput}
+                              value={draft.weightKg}
+                              onChangeText={(value) =>
+                                updateExerciseDraft(exercise.id, "weightKg", value)
+                              }
+                              placeholder="Ej. 20"
+                              keyboardType="decimal-pad"
+                              editable={!savingCompletion}
+                            />
+                          </>
+                        ) : null}
+
+                        {isCardio ? (
+                          <>
+                            <Text style={styles.inputLabel}>Tiempo realizado (minutos) *</Text>
+                            <TextInput
+                              style={styles.modalInput}
+                              value={draft.durationMinutes}
+                              onChangeText={(value) =>
+                                updateExerciseDraft(exercise.id, "durationMinutes", value)
+                              }
+                              placeholder="Ej. 30"
+                              keyboardType="decimal-pad"
+                              editable={!savingCompletion}
+                            />
+                          </>
+                        ) : null}
+
+                        {!isStrength && !isCardio ? (
+                          <Text style={styles.optionalInfo}>
+                            Registra una nota opcional sobre este ejercicio.
+                          </Text>
+                        ) : null}
+
+                        <Text style={styles.inputLabel}>Notas</Text>
                         <TextInput
-                          style={styles.modalInput}
-                          value={draft.weightKg}
+                          style={[styles.modalInput, styles.notesInput]}
+                          value={draft.notes}
                           onChangeText={(value) =>
-                            updateExerciseDraft(exercise.id, "weightKg", value)
+                            updateExerciseDraft(exercise.id, "notes", value)
                           }
-                          placeholder="Ej. 20"
-                          keyboardType="decimal-pad"
+                          placeholder="Ej. Me sentí bien"
+                          multiline
                           editable={!savingCompletion}
                         />
                       </>
-                    ) : null}
-
-                    {isCardio ? (
-                      <>
-                        <Text style={styles.inputLabel}>Tiempo realizado (minutos) *</Text>
-                        <TextInput
-                          style={styles.modalInput}
-                          value={draft.durationMinutes}
-                          onChangeText={(value) =>
-                            updateExerciseDraft(exercise.id, "durationMinutes", value)
-                          }
-                          placeholder="Ej. 30"
-                          keyboardType="decimal-pad"
-                          editable={!savingCompletion}
-                        />
-                      </>
-                    ) : null}
-
-                    {!isStrength && !isCardio ? (
-                      <Text style={styles.optionalInfo}>
-                        Registra una nota opcional sobre este ejercicio.
+                    ) : (
+                      <Text style={styles.readOnlyNotice}>
+                        {selectedRoutine?.completedCount
+                          ? "Esta rutina ya fue completada."
+                          : (selectedRoutine?.scheduledDate ?? "") > today
+                            ? "Esta rutina es futura y no puede completarse todavía."
+                            : "Esta rutina es pasada y ya no puede marcarse como completada."}
                       </Text>
-                    ) : null}
-
-                    <Text style={styles.inputLabel}>Notas</Text>
-                    <TextInput
-                      style={[styles.modalInput, styles.notesInput]}
-                      value={draft.notes}
-                      onChangeText={(value) =>
-                        updateExerciseDraft(exercise.id, "notes", value)
-                      }
-                      placeholder="Ej. Me sentí bien"
-                      multiline
-                      editable={!savingCompletion}
-                    />
+                    )}
                   </View>
                 );
               })}
 
-              <TouchableOpacity
-                style={styles.completeButton}
-                onPress={saveCompletion}
-                disabled={savingCompletion}
-                activeOpacity={0.85}
-              >
-                {savingCompletion ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.completeButtonText}>Marcar rutina como completada</Text>
-                )}
-              </TouchableOpacity>
+              {canCompleteSelectedRoutine ? (
+                <TouchableOpacity
+                  style={styles.completeButton}
+                  onPress={saveCompletion}
+                  disabled={savingCompletion}
+                  activeOpacity={0.85}
+                >
+                  {savingCompletion ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.completeButtonText}>Marcar rutina como completada</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
             </ScrollView>
           </View>
         </View>
@@ -310,6 +411,26 @@ const styles = StyleSheet.create({
   loadingText: { color: "#64748B", marginTop: 12 },
   title: { fontSize: 34, fontWeight: "bold", color: "#111827", marginTop: 20 },
   subtitle: { fontSize: 17, color: "#6B7280", marginBottom: 18, marginTop: 4 },
+  tabs: {
+    flexDirection: "row",
+    backgroundColor: "#E2E8F0",
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 14,
+    gap: 4,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedTab: { backgroundColor: "#2563EB" },
+  tabLabel: { color: "#475569", fontSize: 12, fontWeight: "700" },
+  selectedTabLabel: { color: "#FFFFFF" },
+  tabCount: { color: "#64748B", fontSize: 12, fontWeight: "bold", marginTop: 2 },
+  selectedTabCount: { color: "#DBEAFE" },
   list: { paddingBottom: 24 },
   emptyList: { flexGrow: 1, paddingBottom: 24 },
   emptyCard: {
@@ -368,6 +489,14 @@ const styles = StyleSheet.create({
   },
   notesInput: { minHeight: 62, textAlignVertical: "top" },
   optionalInfo: { color: "#64748B", fontSize: 13, marginTop: 12 },
+  readOnlyNotice: {
+    color: "#B45309",
+    backgroundColor: "#FEF3C7",
+    borderRadius: 9,
+    padding: 10,
+    marginTop: 12,
+    lineHeight: 18,
+  },
   completeButton: {
     backgroundColor: "#16A34A",
     minHeight: 54,

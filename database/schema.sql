@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS routines (
   title VARCHAR(160) NOT NULL,
   level VARCHAR(60) NOT NULL,
   duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  scheduled_date DATE NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_routines_trainer (trainer_id),

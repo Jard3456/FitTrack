@@ -88,6 +88,12 @@ function validateCredentials(email, password) {
   return null;
 }
 
+function isValidIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 app.get("/api/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
@@ -313,6 +319,7 @@ app.post(
     const title = String(req.body?.title || "").trim();
     const level = String(req.body?.level || "Intermedio").trim();
     const durationMinutes = Number(req.body?.durationMinutes || 0);
+    const scheduledDate = String(req.body?.scheduledDate || "").trim();
     const exerciseIds = Array.from(
       new Set(
         (Array.isArray(req.body?.exerciseIds) ? req.body.exerciseIds : [])
@@ -321,9 +328,15 @@ app.post(
       )
     );
 
-    if (!title || !exerciseIds.length || !Number.isInteger(durationMinutes) || durationMinutes < 0) {
+    if (
+      !title ||
+      !exerciseIds.length ||
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes <= 0 ||
+      !isValidIsoDate(scheduledDate)
+    ) {
       return res.status(400).json({
-        message: "El título, la duración y al menos un ejercicio son obligatorios.",
+        message: "El título, la fecha, la duración y al menos un ejercicio son obligatorios.",
       });
     }
 
@@ -357,9 +370,17 @@ app.post(
       try {
         await connection.beginTransaction();
         const [routineResult] = await connection.execute(
-          `INSERT INTO routines (trainer_id, user_id, title, level, duration_minutes)
-           VALUES (?, ?, ?, ?, ?)`,
-          [req.userId, userId, title, level || "Intermedio", durationMinutes]
+          `INSERT INTO routines
+           (trainer_id, user_id, title, level, duration_minutes, scheduled_date)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            req.userId,
+            userId,
+            title,
+            level || "Intermedio",
+            durationMinutes,
+            scheduledDate,
+          ]
         );
 
         for (const [index, exerciseId] of exerciseIds.entries()) {
@@ -376,6 +397,7 @@ app.post(
           title,
           level: level || "Intermedio",
           durationMinutes,
+          scheduledDate,
           exerciseCount: exerciseIds.length,
         });
       } catch (error) {
@@ -395,6 +417,7 @@ app.get("/api/routines", requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT r.id, r.title, r.level, r.duration_minutes AS durationMinutes,
+              DATE_FORMAT(r.scheduled_date, '%Y-%m-%d') AS scheduledDate,
               r.created_at,
               (SELECT COUNT(*) FROM routine_completions rc
                WHERE rc.routine_id = r.id AND rc.user_id = ?) AS completedCount,
@@ -418,6 +441,7 @@ app.get("/api/routines", requireAuth, async (req, res) => {
           title: row.title,
           level: row.level,
           durationMinutes: Number(row.durationMinutes || 0),
+          scheduledDate: row.scheduledDate,
           completedCount: Number(row.completedCount || 0),
           lastCompletedAt: row.lastCompletedAt,
           exercises: [],
@@ -447,6 +471,39 @@ app.post("/api/routines/:routineId/complete", requireAuth, async (req, res) => {
     : [];
 
   try {
+    const [routineRows] = await pool.execute(
+      `SELECT id, DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS scheduledDate
+       FROM routines WHERE id = ? AND user_id = ? LIMIT 1`,
+      [routineId, req.userId]
+    );
+
+    if (!routineRows.length) {
+      return res.status(404).json({ message: "Rutina no encontrada." });
+    }
+
+    const [todayRows] = await pool.execute(
+      `SELECT id FROM routines
+       WHERE id = ? AND user_id = ? AND scheduled_date = CURRENT_DATE
+       LIMIT 1`,
+      [routineId, req.userId]
+    );
+
+    if (!todayRows.length) {
+      return res.status(400).json({
+        message: `Esta rutina está programada para el ${routineRows[0].scheduledDate} y solo puede completarse el día actual.`,
+      });
+    }
+
+    const [existingCompletion] = await pool.execute(
+      `SELECT id FROM routine_completions
+       WHERE routine_id = ? AND user_id = ? LIMIT 1`,
+      [routineId, req.userId]
+    );
+
+    if (existingCompletion.length) {
+      return res.status(409).json({ message: "Esta rutina ya fue completada." });
+    }
+
     const [routineExercises] = await pool.execute(
       `SELECT r.id AS routineId, re.exercise_id AS exerciseId,
               ce.name AS exerciseName, ce.type AS exerciseType
@@ -570,8 +627,9 @@ app.get(
       }
 
       const [rows] = await pool.execute(
-        `SELECT rc.id AS completionId, rc.completed_at AS completedAt,
+      `SELECT rc.id AS completionId, rc.completed_at AS completedAt,
                 rc.total_exercises AS totalExercises, r.title AS routineTitle,
+                DATE_FORMAT(r.scheduled_date, '%Y-%m-%d') AS scheduledDate,
                 el.exercise_name AS exerciseName, el.exercise_type AS exerciseType,
                 el.weight_kg AS weightKg, el.duration_minutes AS durationMinutes,
                 el.notes
@@ -590,6 +648,7 @@ app.get(
           completionsById.set(completionId, {
             id: completionId,
             routineTitle: row.routineTitle,
+            scheduledDate: row.scheduledDate,
             completedAt: row.completedAt,
             totalExercises: Number(row.totalExercises || 0),
             exercises: [],

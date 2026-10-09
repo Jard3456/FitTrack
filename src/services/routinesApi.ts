@@ -6,6 +6,7 @@ export type AssignedRoutine = {
   title: string;
   level: string;
   durationMinutes: number;
+  scheduledDate: string;
   completedCount: number;
   lastCompletedAt: string | null;
   exercises: Array<{ id: string; name: string; type: string }>;
@@ -15,6 +16,7 @@ export type CreateRoutineInput = {
   title: string;
   level: string;
   durationMinutes: number;
+  scheduledDate: string;
   exerciseIds: number[];
 };
 
@@ -28,6 +30,7 @@ export type ExerciseCompletionInput = {
 export type TraineeProgress = {
   id: string;
   routineTitle: string;
+  scheduledDate: string;
   completedAt: string;
   totalExercises: number;
   exercises: Array<{
