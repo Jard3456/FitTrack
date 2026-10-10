@@ -2,7 +2,7 @@
 
 La solución de producción queda separada en cuatro piezas:
 
-- **Amazon RDS for MySQL**: base de datos de `server/`.
+- **Supabase PostgreSQL**: base de datos de `server/`, creada con `database/supabase-schema.sql`.
 - **AWS App Runner**: API Express de `server/`, construida con `Dockerfile`.
 - **AWS Amplify Hosting**: versión web estática generada por `npm run web:build`.
 - **EAS Build/Submit**: binarios Android/iOS de la app Expo para las tiendas.
@@ -20,22 +20,21 @@ npm run web:build
 
 No subas `.env`. El archivo está ignorado por Git. El repositorio ya incluye `eas.json`, `amplify.yml` y `Dockerfile`.
 
-## 2. Crear RDS MySQL
+## 2. Crear la base de datos en Supabase
 
-En la misma región de AWS que utilizarás para el backend:
+En Supabase:
 
-1. Crea una instancia MySQL llamada `fittrack`.
-2. Usa subredes privadas y desactiva el acceso público cuando sea posible.
-3. Permite TCP `3306` únicamente desde el security group/VPC connector que utilizará App Runner.
-4. Conserva el endpoint, usuario, contraseña, puerto y nombre de base de datos.
+1. Crea un proyecto PostgreSQL.
+2. Abre **SQL Editor** y ejecuta `database/supabase-schema.sql`.
+3. En **Connect**, copia la cadena **Session pooler** para el backend.
 
-Inicializa el esquema desde una máquina autorizada para conectarse a RDS. Configura temporalmente esas variables en `.env` local y ejecuta:
+Para inicializar desde local, configura temporalmente `DATABASE_URL` en `.env` y ejecuta:
 
 ```bash
 npm run db:init
 ```
 
-Después elimina cualquier copia local que contenga la contraseña de RDS si ya no la necesitas.
+Después elimina cualquier copia local que contenga la contraseña de Supabase si ya no la necesitas.
 
 ## 3. Publicar la API en App Runner
 
@@ -45,15 +44,11 @@ Conecta el repositorio de GitHub `Jard3456/FitTrack`, rama `master`, y seleccion
 - Health check: `GET /api/health`
 - `NODE_ENV=production`
 - `PORT=3000`
-- `DB_HOST=<endpoint-de-rds>`
-- `DB_PORT=3306`
-- `DB_NAME=fittrack`
-- `DB_USER=<usuario-rds>`
-- `DB_PASSWORD=<contraseña-rds>`
+- `DATABASE_URL=<cadena-session-pooler-de-supabase>`
 - `JWT_SECRET=<secreto-aleatorio-de-al-menos-32-caracteres>`
 - `CORS_ORIGINS=https://<dominio-de-amplify>`
 
-Si RDS no es público, configura un VPC connector en App Runner y permite su security group en el de RDS. Cuando App Runner termine, prueba:
+Cuando App Runner termine, prueba:
 
 ```text
 https://<dominio-app-runner>/api/health

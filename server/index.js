@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg");
 const dotenv = require("dotenv");
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -18,15 +18,73 @@ if (isProduction && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 
   throw new Error("JWT_SECRET debe tener al menos 32 caracteres en producción.");
 }
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || "127.0.0.1",
-  port: Number(process.env.DB_PORT || 3306),
-  database: process.env.DB_NAME || "fittrack",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "root",
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+const databaseUrl = process.env.DATABASE_URL?.trim();
+const databaseConfig = databaseUrl
+  ? {
+      connectionString: databaseUrl,
+      ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+      max: Number(process.env.DB_POOL_MAX || 10),
+    }
+  : {
+      host: process.env.DB_HOST || "127.0.0.1",
+      port: Number(process.env.DB_PORT || 5432),
+      database: process.env.DB_NAME || "fittrack",
+      user: process.env.DB_USER || "postgres",
+      password: process.env.DB_PASSWORD || "postgres",
+      max: Number(process.env.DB_POOL_MAX || 10),
+    };
+
+const database = new Pool(databaseConfig);
+
+function toPostgresQuery(sql) {
+  let parameterIndex = 0;
+  let query = sql
+    .replace(/\?/g, () => `$${++parameterIndex}`)
+    .replace(
+      /DATE_SUB\(CURRENT_DATE, INTERVAL WEEKDAY\(CURRENT_DATE\) DAY\)/gi,
+      "date_trunc('week', CURRENT_DATE)::date"
+    )
+    .replace(/DATE_FORMAT\(([^,]+),\s*'%Y-%m-%d'\)/gi, "TO_CHAR($1, 'YYYY-MM-DD')")
+    .replace(/DATE\(([^()]+)\)/gi, "($1)::date")
+    .replace(
+      /ON DUPLICATE KEY UPDATE\s+weight = VALUES\(weight\),\s*target_weight = VALUES\(target_weight\),\s*height = VALUES\(height\),\s*objective = VALUES\(objective\)/gi,
+      "ON CONFLICT (user_id) DO UPDATE SET weight = EXCLUDED.weight, target_weight = EXCLUDED.target_weight, height = EXCLUDED.height, objective = EXCLUDED.objective"
+    );
+
+  return query.replace(/\bAS\s+([A-Za-z_][A-Za-z0-9_]*)/g, 'AS "$1"');
+}
+
+function mysqlCompatibleResult(result) {
+  if (["SELECT", "SHOW", "WITH"].includes(result.command)) {
+    return result.rows;
+  }
+
+  return {
+    affectedRows: result.rowCount,
+    insertId: result.rows[0]?.id,
+  };
+}
+
+async function runQuery(client, sql, values = []) {
+  const result = await client.query(toPostgresQuery(sql), values);
+  return [mysqlCompatibleResult(result), result];
+}
+
+const pool = {
+  query: (sql, values) => runQuery(database, sql, values),
+  execute: (sql, values) => runQuery(database, sql, values),
+  async getConnection() {
+    const client = await database.connect();
+    return {
+      query: (sql, values) => runQuery(client, sql, values),
+      execute: (sql, values) => runQuery(client, sql, values),
+      beginTransaction: () => client.query("BEGIN"),
+      commit: () => client.query("COMMIT"),
+      rollback: () => client.query("ROLLBACK"),
+      release: () => client.release(),
+    };
+  },
+};
 
 const allowedOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
@@ -147,7 +205,7 @@ app.post("/api/auth/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const [result] = await pool.execute(
-      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) RETURNING id",
       [name, email, passwordHash, "usuario"]
     );
     const user = { id: result.insertId, name, email, role: "usuario" };
@@ -298,7 +356,7 @@ app.post(
 
       return res.status(201).json({ message: "Usuario asignado correctamente." });
     } catch (error) {
-      if (error.code === "ER_DUP_ENTRY") {
+      if (error.code === "23505") {
         return res.status(409).json({
           message: "Este usuario ya está siendo entrenado por otro entrenador.",
         });
@@ -395,7 +453,7 @@ app.post(
         const [routineResult] = await connection.execute(
           `INSERT INTO routines
            (trainer_id, user_id, title, level, duration_minutes, scheduled_date)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
           [
             req.userId,
             userId,
@@ -591,7 +649,7 @@ app.post("/api/routines/:routineId/complete", requireAuth, async (req, res) => {
       await connection.beginTransaction();
       const [completionResult] = await connection.execute(
         `INSERT INTO routine_completions (routine_id, user_id, total_exercises)
-         VALUES (?, ?, ?)`,
+         VALUES (?, ?, ?) RETURNING id`,
         [routineId, req.userId, routineExercises.length]
       );
 
@@ -798,7 +856,7 @@ app.post("/api/exercises/custom", requireAuth, async (req, res) => {
     const [result] = await pool.execute(
       `INSERT INTO custom_exercises
        (user_id, name, type, muscle, difficulty, equipment, instructions, safety_info)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         req.userId,
         fields.name,
