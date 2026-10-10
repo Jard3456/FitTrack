@@ -9,9 +9,14 @@ const dotenv = require("dotenv");
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const app = express();
-const port = Number(process.env.API_PORT || 3000);
+const port = Number(process.env.PORT || process.env.API_PORT || 3000);
+const isProduction = process.env.NODE_ENV === "production";
 const jwtSecret = process.env.JWT_SECRET || "change-this-development-secret";
 const allowedRoles = new Set(["usuario", "entrenador", "administrador"]);
+
+if (isProduction && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)) {
+  throw new Error("JWT_SECRET debe tener al menos 32 caracteres en producción.");
+}
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -23,7 +28,25 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (isProduction && allowedOrigins.length === 0) {
+  throw new Error("CORS_ORIGINS debe configurarse en producción.");
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Origen no permitido por CORS."));
+    },
+  })
+);
 app.use(express.json());
 
 function publicUser(user) {

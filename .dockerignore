@@ -1,0 +1,16 @@
+.git
+.github
+.expo
+node_modules
+dist
+web-build
+.env
+.env.*
+!.env.example
+assets
+src
+App.tsx
+index.ts
+package.json
+package-lock.json
+README.md
