@@ -29,6 +29,7 @@ import {
 } from "../services/routinesApi";
 import { Exercise } from "../types/exercise";
 import { calculateWeightProgress } from "../utils/fitness";
+import { AuthUser } from "../services/authApi";
 
 type UserFilter = "todos" | "disponibles" | "mios";
 
@@ -177,7 +178,12 @@ function RoutineCalendar({
   );
 }
 
-export default function TrainerUsersScreen() {
+type Props = {
+  userRole?: AuthUser["role"];
+};
+
+export default function TrainerUsersScreen({ userRole }: Props) {
+  const isAdministrator = userRole === "administrador";
   const [users, setUsers] = useState<TrainerUser[]>([]);
   const [activeFilter, setActiveFilter] = useState<UserFilter>("todos");
   const [loading, setLoading] = useState(true);
@@ -226,7 +232,9 @@ export default function TrainerUsersScreen() {
     }
 
     if (activeFilter === "mios") {
-      return users.filter((user) => user.assignedToMe);
+      return users.filter((user) =>
+        isAdministrator ? user.canManage : user.assignedToMe
+      );
     }
 
     return users;
@@ -234,7 +242,11 @@ export default function TrainerUsersScreen() {
 
   const getCount = (filter: UserFilter) => {
     if (filter === "disponibles") return users.filter((user) => user.isAvailable).length;
-    if (filter === "mios") return users.filter((user) => user.assignedToMe).length;
+    if (filter === "mios") {
+      return users.filter((user) =>
+        isAdministrator ? user.canManage : user.assignedToMe
+      ).length;
+    }
     return users.length;
   };
 
@@ -502,9 +514,13 @@ export default function TrainerUsersScreen() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <>
-            <Text style={styles.title}>Usuarios para entrenar</Text>
+            <Text style={styles.title}>
+              {isAdministrator ? "Gestión global de usuarios" : "Usuarios para entrenar"}
+            </Text>
             <Text style={styles.subtitle}>
-              Consulta quién está disponible y administra tus usuarios asignados.
+              {isAdministrator
+                ? "Consulta usuarios, asigna rutinas y revisa el progreso de cualquiera."
+                : "Consulta quién está disponible y administra tus usuarios asignados."}
             </Text>
 
             <View style={styles.tabs}>
@@ -523,7 +539,9 @@ export default function TrainerUsersScreen() {
                       color={selected ? "#FFFFFF" : "#64748B"}
                     />
                     <Text style={[styles.tabLabel, selected && styles.selectedTabLabel]}>
-                      {filter.label}
+                      {isAdministrator && filter.value === "mios"
+                        ? "Gestionables"
+                        : filter.label}
                     </Text>
                     <Text style={[styles.count, selected && styles.selectedCount]}>
                       {getCount(filter.value)}
@@ -555,6 +573,7 @@ export default function TrainerUsersScreen() {
         }
         renderItem={({ item }) => {
           const processing = processingId === item.id;
+          const canManageUser = isAdministrator || item.canManage;
           const statusColor = item.assignedToMe
             ? "#166534"
             : item.isAvailable
@@ -579,6 +598,10 @@ export default function TrainerUsersScreen() {
                 <Text style={[styles.statusText, { color: statusColor }]}>
                   {item.assignedToMe
                     ? "Lo entrenas tú"
+                    : isAdministrator && item.trainerName
+                      ? `Entrenado por ${item.trainerName}`
+                      : isAdministrator
+                        ? "Disponible para gestionar"
                     : item.isAvailable
                       ? "Disponible"
                       : `Entrenado por ${item.trainerName || "otro entrenador"}`}
@@ -590,7 +613,7 @@ export default function TrainerUsersScreen() {
                 ) : null}
               </View>
 
-              {item.assignedToMe ? (
+              {canManageUser ? (
                 <View style={styles.actions}>
                   <TouchableOpacity
                     style={styles.progressButton}
@@ -608,18 +631,20 @@ export default function TrainerUsersScreen() {
                   >
                     <Text style={styles.routineButtonText}>Rutina</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.releaseButton}
-                    onPress={() => releaseUser(item)}
-                    disabled={processing}
-                    activeOpacity={0.8}
-                  >
-                    {processing ? (
-                      <ActivityIndicator color="#B91C1C" size="small" />
-                    ) : (
-                      <Text style={styles.releaseText}>Liberar</Text>
-                    )}
-                  </TouchableOpacity>
+                  {item.assignedToMe || (isAdministrator && item.trainerId) ? (
+                    <TouchableOpacity
+                      style={styles.releaseButton}
+                      onPress={() => releaseUser(item)}
+                      disabled={processing}
+                      activeOpacity={0.8}
+                    >
+                      {processing ? (
+                        <ActivityIndicator color="#B91C1C" size="small" />
+                      ) : (
+                        <Text style={styles.releaseText}>Liberar</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : item.isAvailable ? (
                 <TouchableOpacity

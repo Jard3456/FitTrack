@@ -12,6 +12,12 @@ export type AssignedRoutine = {
   exercises: Array<{ id: string; name: string; type: string }>;
 };
 
+export type AdminRoutine = AssignedRoutine & {
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+  trainer: { id: string; name: string; email: string };
+};
+
 export type CreateRoutineInput = {
   title: string;
   level: string;
@@ -110,6 +116,27 @@ export async function getAssignedRoutines(): Promise<AssignedRoutine[]> {
   }
 
   return (await response.json()) as AssignedRoutine[];
+}
+
+export async function getAllRoutines(): Promise<AdminRoutine[]> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/admin/routines`, {
+      headers: await getAuthHeaders(),
+    });
+  } catch {
+    throw new Error("No se pudo conectar con el servidor.");
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      (await getErrorMessage(response)) ??
+        "No se pudieron consultar todas las rutinas."
+    );
+  }
+
+  return (await response.json()) as AdminRoutine[];
 }
 
 export async function createRoutineForUser(

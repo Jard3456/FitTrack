@@ -10,6 +10,7 @@ export type TrainerUser = {
   routineCount: number;
   isAvailable: boolean;
   assignedToMe: boolean;
+  canManage: boolean;
 };
 
 async function getAuthHeaders() {

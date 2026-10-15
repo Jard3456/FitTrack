@@ -176,6 +176,71 @@ app.get("/api/users", requireAuth, requireRole("administrador"), async (_req, re
   }
 });
 
+app.get("/api/admin/routines", requireAuth, requireRole("administrador"), async (_req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT r.id, r.title, r.level,
+              r.duration_minutes AS durationMinutes,
+              DATE_FORMAT(r.scheduled_date, '%Y-%m-%d') AS scheduledDate,
+              DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+              u.id AS userId, u.name AS userName, u.email AS userEmail,
+              t.id AS trainerId, t.name AS trainerName, t.email AS trainerEmail,
+              (SELECT COUNT(*) FROM routine_completions rc
+               WHERE rc.routine_id = r.id) AS completedCount,
+              (SELECT MAX(rc.completed_at) FROM routine_completions rc
+               WHERE rc.routine_id = r.id) AS lastCompletedAt,
+              ce.id AS exerciseId, ce.name AS exerciseName, ce.type AS exerciseType
+       FROM routines r
+       INNER JOIN users u ON u.id = r.user_id
+       INNER JOIN users t ON t.id = r.trainer_id
+       LEFT JOIN routine_exercises re ON re.routine_id = r.id
+       LEFT JOIN custom_exercises ce ON ce.id = re.exercise_id
+       ORDER BY r.created_at DESC, re.exercise_order ASC`
+    );
+
+    const routinesById = new Map();
+    for (const row of rows) {
+      const routineId = String(row.id);
+      if (!routinesById.has(routineId)) {
+        routinesById.set(routineId, {
+          id: routineId,
+          title: row.title,
+          level: row.level,
+          durationMinutes: Number(row.durationMinutes || 0),
+          scheduledDate: row.scheduledDate,
+          createdAt: row.createdAt,
+          completedCount: Number(row.completedCount || 0),
+          lastCompletedAt: row.lastCompletedAt,
+          user: {
+            id: String(row.userId),
+            name: row.userName,
+            email: row.userEmail,
+          },
+          trainer: {
+            id: String(row.trainerId),
+            name: row.trainerName,
+            email: row.trainerEmail,
+          },
+          exercises: [],
+        });
+      }
+
+      if (row.exerciseId !== null) {
+        routinesById.get(routineId).exercises.push({
+          id: String(row.exerciseId),
+          name: row.exerciseName,
+          type: row.exerciseType,
+        });
+      }
+    }
+
+    return res.json(Array.from(routinesById.values()));
+  } catch (error) {
+    console.error("Admin list routines error:", error.message);
+    return res.status(500).json({ message: "No se pudieron consultar todas las rutinas." });
+  }
+});
+
 app.patch(
   "/api/users/:userId/role",
   requireAuth,
@@ -207,14 +272,19 @@ app.patch(
   }
 );
 
-app.get("/api/trainer/users", requireAuth, requireRole("entrenador"), async (req, res) => {
+app.get(
+  "/api/trainer/users",
+  requireAuth,
+  requireRole("entrenador", "administrador"),
+  async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT u.id, u.name, u.email,
               a.trainer_id AS trainerId,
               t.name AS trainerName,
               (SELECT COUNT(*) FROM routines r
-               WHERE r.user_id = u.id AND r.trainer_id = ?) AS routineCount,
+               WHERE r.user_id = u.id
+                 AND (? = 'administrador' OR r.trainer_id = ?)) AS routineCount,
               CASE WHEN a.user_id IS NULL THEN 1 ELSE 0 END AS isAvailable,
               CASE WHEN a.trainer_id = ? THEN 1 ELSE 0 END AS assignedToMe
        FROM users u
@@ -222,7 +292,7 @@ app.get("/api/trainer/users", requireAuth, requireRole("entrenador"), async (req
        LEFT JOIN users t ON t.id = a.trainer_id
        WHERE u.role = 'usuario'
        ORDER BY u.name ASC`,
-      [req.userId, req.userId]
+      [req.userRole, req.userId, req.userId]
     );
 
     return res.json(
@@ -235,18 +305,20 @@ app.get("/api/trainer/users", requireAuth, requireRole("entrenador"), async (req
         routineCount: Number(row.routineCount || 0),
         isAvailable: Boolean(row.isAvailable),
         assignedToMe: Boolean(row.assignedToMe),
+        canManage: req.userRole === "administrador" || Boolean(row.assignedToMe),
       }))
     );
   } catch (error) {
     console.error("List trainer users error:", error.message);
     return res.status(500).json({ message: "No se pudieron consultar los usuarios." });
   }
-});
+  }
+);
 
 app.post(
   "/api/trainer/users/:userId",
   requireAuth,
-  requireRole("entrenador"),
+  requireRole("entrenador", "administrador"),
   async (req, res) => {
     const userId = String(req.params.userId);
 
@@ -290,13 +362,18 @@ app.post(
 app.delete(
   "/api/trainer/users/:userId",
   requireAuth,
-  requireRole("entrenador"),
+  requireRole("entrenador", "administrador"),
   async (req, res) => {
     try {
-      const [result] = await pool.execute(
-        "DELETE FROM trainer_user_assignments WHERE trainer_id = ? AND user_id = ?",
-        [req.userId, req.params.userId]
-      );
+      const [result] = req.userRole === "administrador"
+        ? await pool.execute(
+            "DELETE FROM trainer_user_assignments WHERE user_id = ?",
+            [req.params.userId]
+          )
+        : await pool.execute(
+            "DELETE FROM trainer_user_assignments WHERE trainer_id = ? AND user_id = ?",
+            [req.userId, req.params.userId]
+          );
 
       if (!result.affectedRows) {
         return res.status(404).json({ message: "Este usuario no está asignado a ti." });
@@ -313,7 +390,7 @@ app.delete(
 app.post(
   "/api/trainer/users/:userId/routines",
   requireAuth,
-  requireRole("entrenador"),
+  requireRole("entrenador", "administrador"),
   async (req, res) => {
     const userId = String(req.params.userId);
     const title = String(req.body?.title || "").trim();
@@ -341,16 +418,18 @@ app.post(
     }
 
     try {
-      const [assignment] = await pool.execute(
-        `SELECT id FROM trainer_user_assignments
-         WHERE trainer_id = ? AND user_id = ? LIMIT 1`,
-        [req.userId, userId]
-      );
+      if (req.userRole !== "administrador") {
+        const [assignment] = await pool.execute(
+          `SELECT id FROM trainer_user_assignments
+           WHERE trainer_id = ? AND user_id = ? LIMIT 1`,
+          [req.userId, userId]
+        );
 
-      if (!assignment.length) {
-        return res.status(403).json({
-          message: "Solo puedes asignar rutinas a tus usuarios entrenados.",
-        });
+        if (!assignment.length) {
+          return res.status(403).json({
+            message: "Solo puedes asignar rutinas a tus usuarios entrenados.",
+          });
+        }
       }
 
       const placeholders = exerciseIds.map(() => "?").join(", ");
@@ -611,19 +690,21 @@ app.post("/api/routines/:routineId/complete", requireAuth, async (req, res) => {
 app.get(
   "/api/trainer/users/:userId/progress",
   requireAuth,
-  requireRole("entrenador"),
+  requireRole("entrenador", "administrador"),
   async (req, res) => {
     try {
-      const [assignment] = await pool.execute(
-        `SELECT id FROM trainer_user_assignments
-         WHERE trainer_id = ? AND user_id = ? LIMIT 1`,
-        [req.userId, req.params.userId]
-      );
+      if (req.userRole !== "administrador") {
+        const [assignment] = await pool.execute(
+          `SELECT id FROM trainer_user_assignments
+           WHERE trainer_id = ? AND user_id = ? LIMIT 1`,
+          [req.userId, req.params.userId]
+        );
 
-      if (!assignment.length) {
-        return res.status(403).json({
-          message: "Solo puedes consultar el progreso de tus usuarios.",
-        });
+        if (!assignment.length) {
+          return res.status(403).json({
+            message: "Solo puedes consultar el progreso de tus usuarios.",
+          });
+        }
       }
 
       const [goalRows] = await pool.execute(

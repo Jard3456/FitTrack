@@ -105,12 +105,13 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
             options={{ title: "Usuarios" }}
           />
         ) : null}
-        {userRole === "entrenador" ? (
+        {userRole === "entrenador" || userRole === "administrador" ? (
           <Tab.Screen
             name="Entrenamiento"
-            component={TrainerUsersScreen}
-            options={{ title: "Mis usuarios" }}
-          />
+            options={{ title: userRole === "administrador" ? "Gestión global" : "Mis usuarios" }}
+          >
+            {() => <TrainerUsersScreen userRole={userRole} />}
+          </Tab.Screen>
         ) : null}
         <Tab.Screen name="Perfil">
           {() => <ProfileScreen onLogout={onLogout} userRole={userRole} />}

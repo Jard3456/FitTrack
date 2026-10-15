@@ -16,10 +16,12 @@ import { Ionicons } from "@expo/vector-icons";
 
 import RoutineCard from "../components/RoutineCard";
 import {
+  AdminRoutine,
   AssignedRoutine,
   completeRoutine,
   createRoutineForUser,
   ExerciseCompletionInput,
+  getAllRoutines,
   getAssignedRoutines,
 } from "../services/routinesApi";
 import { getCustomExercises } from "../services/customExercisesApi";
@@ -161,13 +163,15 @@ type Props = {
   userRole?: AuthUser["role"];
 };
 
+type RoutineListItem = AssignedRoutine | AdminRoutine;
+
 export default function RoutinesScreen({ userRole }: Props) {
-  const [routines, setRoutines] = useState<AssignedRoutine[]>([]);
+  const [routines, setRoutines] = useState<RoutineListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [activeFilter, setActiveFilter] = useState<RoutineFilter>("today");
-  const [selectedRoutine, setSelectedRoutine] = useState<AssignedRoutine | null>(null);
+  const [selectedRoutine, setSelectedRoutine] = useState<RoutineListItem | null>(null);
   const [exerciseDrafts, setExerciseDrafts] = useState<Record<string, ExerciseDraft>>({});
   const [savingCompletion, setSavingCompletion] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
@@ -183,7 +187,8 @@ export default function RoutinesScreen({ userRole }: Props) {
   const [savingAssignment, setSavingAssignment] = useState(false);
 
   const today = formatLocalDate();
-  const isTrainer = userRole === "entrenador";
+  const isManager = userRole === "entrenador" || userRole === "administrador";
+  const isAdministrator = userRole === "administrador";
 
   const visibleRoutines = useMemo(() => {
     return routines.filter((routine) => {
@@ -207,7 +212,9 @@ export default function RoutinesScreen({ userRole }: Props) {
     setError("");
 
     try {
-      setRoutines(await getAssignedRoutines());
+      setRoutines(
+        isAdministrator ? await getAllRoutines() : await getAssignedRoutines()
+      );
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -218,7 +225,7 @@ export default function RoutinesScreen({ userRole }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAdministrator]);
 
   useEffect(() => {
     loadRoutines();
@@ -238,7 +245,9 @@ export default function RoutinesScreen({ userRole }: Props) {
   };
 
   const canCompleteSelectedRoutine =
-    selectedRoutine?.scheduledDate === today && selectedRoutine.completedCount === 0;
+    !isAdministrator &&
+    selectedRoutine?.scheduledDate === today &&
+    selectedRoutine.completedCount === 0;
 
   const updateExerciseDraft = (
     exerciseId: string,
@@ -321,7 +330,9 @@ export default function RoutinesScreen({ userRole }: Props) {
         getTrainerUsers(),
         getCustomExercises(),
       ]);
-      const assignedUsers = users.filter((user) => user.assignedToMe);
+      const assignedUsers = isAdministrator
+        ? users
+        : users.filter((user) => user.assignedToMe);
       setTrainerUsers(assignedUsers);
       setTrainerExercises(exercises);
       setSelectedUserId(assignedUsers[0]?.id ?? null);
@@ -408,12 +419,14 @@ export default function RoutinesScreen({ userRole }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Rutinas</Text>
       <Text style={styles.subtitle}>
-        {isTrainer
-          ? "Asigna rutinas a tus usuarios seleccionando ejercicios y una fecha."
+        {isManager
+          ? isAdministrator
+            ? "Consulta todas las rutinas y asígnalas a cualquier usuario."
+            : "Asigna rutinas a tus usuarios seleccionando ejercicios y una fecha."
           : "Aquí encontrarás las rutinas asignadas por tu entrenador."}
       </Text>
 
-      {isTrainer ? (
+      {isManager ? (
         <TouchableOpacity
           style={styles.assignRoutineButton}
           onPress={openAssignModal}
@@ -486,17 +499,24 @@ export default function RoutinesScreen({ userRole }: Props) {
           ) : null
         }
         renderItem={({ item }) => (
-          <RoutineCard
-            title={item.title}
-            level={item.level}
-            exercises={item.exercises.length}
-            exerciseNames={item.exercises.map((exercise) => exercise.name)}
-            duration={`${item.durationMinutes} min`}
-            scheduledDate={formatDisplayDate(item.scheduledDate)}
-            completedCount={item.completedCount}
-            onPress={() => openRoutine(item)}
-            icon="barbell"
-          />
+          <View style={styles.routineListItem}>
+            <RoutineCard
+              title={item.title}
+              level={item.level}
+              exercises={item.exercises.length}
+              exerciseNames={item.exercises.map((exercise) => exercise.name)}
+              duration={`${item.durationMinutes} min`}
+              scheduledDate={formatDisplayDate(item.scheduledDate)}
+              completedCount={item.completedCount}
+              onPress={() => openRoutine(item)}
+              icon="barbell"
+            />
+            {isAdministrator && "user" in item ? (
+              <Text style={styles.routineOwner}>
+                Usuario: {item.user.name} · Entrenador: {item.trainer.name}
+              </Text>
+            ) : null}
+          </View>
         )}
       />
 
@@ -514,6 +534,8 @@ export default function RoutinesScreen({ userRole }: Props) {
                 <Text style={styles.modalSubtitle}>
                   {canCompleteSelectedRoutine
                     ? "Registra los datos y marca la rutina como completada."
+                    : isAdministrator
+                      ? "Vista administrativa: esta rutina es solo de consulta."
                     : selectedRoutine?.completedCount
                       ? "Esta rutina ya está registrada como completada."
                       : (selectedRoutine?.scheduledDate ?? "") > today
@@ -599,7 +621,9 @@ export default function RoutinesScreen({ userRole }: Props) {
                       </>
                     ) : (
                       <Text style={styles.readOnlyNotice}>
-                        {selectedRoutine?.completedCount
+                        {isAdministrator
+                          ? "El administrador puede consultar la rutina, pero la completan el usuario asignado."
+                          : selectedRoutine?.completedCount
                           ? "Esta rutina ya fue completada."
                           : (selectedRoutine?.scheduledDate ?? "") > today
                             ? "Esta rutina es futura y no puede completarse todavía."
@@ -629,7 +653,7 @@ export default function RoutinesScreen({ userRole }: Props) {
         </View>
       </Modal>
 
-      {isTrainer ? (
+      {isManager ? (
         <Modal
           visible={assignModalVisible}
           transparent
@@ -835,6 +859,13 @@ const styles = StyleSheet.create({
   tabCount: { color: "#64748B", fontSize: 12, fontWeight: "bold", marginTop: 2 },
   selectedTabCount: { color: "#DBEAFE" },
   list: { paddingBottom: 24 },
+  routineListItem: { marginBottom: 10 },
+  routineOwner: {
+    color: "#64748B",
+    fontSize: 12,
+    marginTop: -3,
+    marginHorizontal: 8,
+  },
   emptyList: { flexGrow: 1, paddingBottom: 24 },
   emptyCard: {
     backgroundColor: "#FFFFFF",
