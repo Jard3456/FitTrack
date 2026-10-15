@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node scripts/start-all.js",
     "start:expo": "expo start",
+    "build": "expo export --platform web",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
