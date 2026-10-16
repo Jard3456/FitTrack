@@ -10,6 +10,8 @@ import ProfileScreen from "../screens/ProfileScreen";
 import ApiResourcesScreen from "../screens/ApiResourcesScreen";
 import AdminUsersScreen from "../screens/AdminUsersScreen";
 import TrainerUsersScreen from "../screens/TrainerUsersScreen";
+import AdminTripsScreen from "../screens/AdminTripsScreen";
+import AdminMoviesScreen from "../screens/AdminMoviesScreen";
 import ExerciseNavigator from "./ExerciseNavigator";
 import { AuthUser } from "../services/authApi";
 
@@ -24,6 +26,8 @@ export type AppTabParamList = {
   Perfil: undefined;
   Administracion: undefined;
   Entrenamiento: undefined;
+  Viajes: undefined;
+  Peliculas: undefined;
 };
 
 type Props = {
@@ -71,6 +75,12 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
               case "Entrenamiento":
                 icon = "people-circle";
                 break;
+              case "Viajes":
+                icon = "airplane";
+                break;
+              case "Peliculas":
+                icon = "film";
+                break;
             }
 
             return (
@@ -112,6 +122,20 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
           >
             {() => <TrainerUsersScreen userRole={userRole} />}
           </Tab.Screen>
+        ) : null}
+        {userRole === "administrador" ? (
+          <>
+            <Tab.Screen
+              name="Viajes"
+              component={AdminTripsScreen}
+              options={{ title: "Viajes" }}
+            />
+            <Tab.Screen
+              name="Peliculas"
+              component={AdminMoviesScreen}
+              options={{ title: "Películas" }}
+            />
+          </>
         ) : null}
         <Tab.Screen name="Perfil">
           {() => <ProfileScreen onLogout={onLogout} userRole={userRole} />}
