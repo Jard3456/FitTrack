@@ -94,16 +94,54 @@ export async function login(email: string, password: string) {
   return session;
 }
 
-export async function register(
+async function requestAuthJson(
+  path: string,
+  body: Record<string, string>
+) {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new AuthApiError(
+      "No se pudo conectar con el servidor. Verifica la URL y que el backend esté encendido."
+    );
+  }
+
+  if (!response.ok) {
+    const detail = await getErrorMessage(response);
+    throw new AuthApiError(
+      detail ?? "No se pudo completar la operación.",
+      response.status
+    );
+  }
+
+  return response.json();
+}
+
+export async function requestRegistrationCode(
   name: string,
   email: string,
   password: string
 ) {
-  const session = await requestAuth("/auth/register", {
+  return requestAuthJson("/auth/register/request-code", {
     name,
     email,
     password,
   });
+}
+
+export async function verifyRegistrationCode(email: string, code: string) {
+  const session = normalizeSession(
+    await requestAuthJson("/auth/register/verify", { email, code })
+  );
   await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
   return session;
 }

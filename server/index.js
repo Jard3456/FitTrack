@@ -1,9 +1,11 @@
 const path = require("node:path");
+const crypto = require("node:crypto");
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const mysql = require("mysql2/promise");
+const nodemailer = require("nodemailer");
 const dotenv = require("dotenv");
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -12,6 +14,24 @@ const app = express();
 const port = Number(process.env.API_PORT || 3000);
 const jwtSecret = process.env.JWT_SECRET || "change-this-development-secret";
 const allowedRoles = new Set(["usuario", "entrenador", "administrador"]);
+const verificationCodeLifetimeMinutes = 10;
+const verificationMaxAttempts = 5;
+
+const smtpPort = Number(process.env.SMTP_PORT || 587);
+const mailTransporter =
+  process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD
+    ? nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: smtpPort,
+        secure:
+          String(process.env.SMTP_SECURE || "").toLowerCase() === "true" ||
+          smtpPort === 465,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD,
+        },
+      })
+    : null;
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -88,6 +108,36 @@ function validateCredentials(email, password) {
   return null;
 }
 
+function createVerificationCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function hashVerificationCode(code) {
+  return crypto.createHash("sha256").update(code).digest("hex");
+}
+
+async function sendVerificationEmail(email, code) {
+  if (!mailTransporter) {
+    throw new Error("SMTP is not configured.");
+  }
+
+  const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
+  await mailTransporter.sendMail({
+    from,
+    to: email,
+    subject: "Código de verificación de FitTrack",
+    text: `Tu código de verificación de FitTrack es: ${code}. Expira en ${verificationCodeLifetimeMinutes} minutos.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">
+        <h2>Verifica tu correo en FitTrack</h2>
+        <p>Usa el siguiente código para terminar de crear tu cuenta:</p>
+        <p style="font-size:28px;font-weight:700;letter-spacing:8px">${code}</p>
+        <p>El código expira en ${verificationCodeLifetimeMinutes} minutos.</p>
+      </div>
+    `,
+  });
+}
+
 function isValidIsoDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
@@ -103,7 +153,7 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register/request-code", async (req, res) => {
   const name = String(req.body?.name || "").trim();
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
@@ -111,6 +161,11 @@ app.post("/api/auth/register", async (req, res) => {
 
   if (!name) return res.status(400).json({ message: "El nombre es requerido." });
   if (validationError) return res.status(400).json({ message: validationError });
+  if (!mailTransporter) {
+    return res.status(503).json({
+      message: "El servicio de correo no está configurado en el servidor.",
+    });
+  }
 
   try {
     const [existingUsers] = await pool.execute(
@@ -122,17 +177,154 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(409).json({ message: "El correo ya está registrado." });
     }
 
+    const verificationCode = createVerificationCode();
+    const codeHash = hashVerificationCode(verificationCode);
     const passwordHash = await bcrypt.hash(password, 12);
-    const [result] = await pool.execute(
-      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
-      [name, email, passwordHash, "usuario"]
+    const expiresAt = new Date(
+      Date.now() + verificationCodeLifetimeMinutes * 60 * 1000
     );
-    const user = { id: result.insertId, name, email, role: "usuario" };
+    const connection = await pool.getConnection();
 
-    return res.status(201).json(createSession(user));
+    try {
+      await connection.beginTransaction();
+      await connection.execute(
+        `INSERT INTO registration_verifications
+           (name, email, password_hash, code_hash, expires_at, attempts)
+         VALUES (?, ?, ?, ?, ?, 0)
+         ON DUPLICATE KEY UPDATE
+           name = ?, password_hash = ?, code_hash = ?, expires_at = ?,
+           attempts = 0, created_at = CURRENT_TIMESTAMP`,
+        [
+          name,
+          email,
+          passwordHash,
+          codeHash,
+          expiresAt,
+          name,
+          passwordHash,
+          codeHash,
+          expiresAt,
+        ]
+      );
+      await sendVerificationEmail(email, verificationCode);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+
+    return res.status(202).json({
+      message: "Te enviamos un código de verificación a tu correo.",
+      expiresInMinutes: verificationCodeLifetimeMinutes,
+    });
   } catch (error) {
-    console.error("Register error:", error.message);
-    return res.status(500).json({ message: "No se pudo crear la cuenta." });
+    console.error("Request registration code error:", error.message);
+    return res.status(502).json({
+      message: "No se pudo enviar el código de verificación.",
+    });
+  }
+});
+
+app.post("/api/auth/register/verify", async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const code = String(req.body?.code || "").trim();
+
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({ message: "El correo no es válido." });
+  }
+  if (!/^\d{6}$/.test(code)) {
+    return res.status(400).json({ message: "El código debe tener 6 dígitos." });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [pendingRows] = await connection.execute(
+      `SELECT id, name, email, password_hash, code_hash, expires_at, attempts
+       FROM registration_verifications
+       WHERE email = ?
+       LIMIT 1`,
+      [email]
+    );
+    const pending = pendingRows[0];
+
+    if (!pending) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: "No hay un código pendiente para este correo.",
+      });
+    }
+
+    if (new Date(pending.expires_at).getTime() < Date.now()) {
+      await connection.execute(
+        "DELETE FROM registration_verifications WHERE id = ?",
+        [pending.id]
+      );
+      await connection.commit();
+      return res.status(410).json({
+        message: "El código expiró. Solicita uno nuevo.",
+      });
+    }
+
+    if (Number(pending.attempts) >= verificationMaxAttempts) {
+      await connection.execute(
+        "DELETE FROM registration_verifications WHERE id = ?",
+        [pending.id]
+      );
+      await connection.commit();
+      return res.status(429).json({
+        message: "Se superó el número de intentos. Solicita un nuevo código.",
+      });
+    }
+
+    if (hashVerificationCode(code) !== pending.code_hash) {
+      await connection.execute(
+        "UPDATE registration_verifications SET attempts = attempts + 1 WHERE id = ?",
+        [pending.id]
+      );
+      await connection.commit();
+      return res.status(400).json({ message: "El código no es válido." });
+    }
+
+    const [existingUsers] = await connection.execute(
+      "SELECT id FROM users WHERE email = ? LIMIT 1",
+      [email]
+    );
+    if (existingUsers.length) {
+      await connection.execute(
+        "DELETE FROM registration_verifications WHERE id = ?",
+        [pending.id]
+      );
+      await connection.commit();
+      return res.status(409).json({ message: "El correo ya está registrado." });
+    }
+
+    const [result] = await connection.execute(
+      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+      [pending.name, pending.email, pending.password_hash, "usuario"]
+    );
+    await connection.execute(
+      "DELETE FROM registration_verifications WHERE id = ?",
+      [pending.id]
+    );
+    await connection.commit();
+
+    return res.status(201).json(
+      createSession({
+        id: result.insertId,
+        name: pending.name,
+        email: pending.email,
+        role: "usuario",
+      })
+    );
+  } catch (error) {
+    await connection.rollback();
+    console.error("Verify registration code error:", error.message);
+    return res.status(500).json({ message: "No se pudo verificar el correo." });
+  } finally {
+    connection.release();
   }
 });
 

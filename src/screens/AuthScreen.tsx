@@ -15,7 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   AuthSession,
   login,
-  register,
+  requestRegistrationCode,
+  verifyRegistrationCode,
 } from "../services/authApi";
 
 type AuthMode = "login" | "register";
@@ -30,6 +31,10 @@ export default function AuthScreen({ onAuthenticated }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [registrationStep, setRegistrationStep] = useState<"details" | "code">(
+    "details"
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -38,6 +43,33 @@ export default function AuthScreen({ onAuthenticated }: Props) {
   const submit = async () => {
     const normalizedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
+
+    if (isRegistering && registrationStep === "code") {
+      const normalizedCode = verificationCode.trim();
+      if (!/^\d{6}$/.test(normalizedCode)) {
+        setError("Escribe el código de 6 dígitos que recibiste.");
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+      try {
+        const session = await verifyRegistrationCode(
+          normalizedEmail,
+          normalizedCode
+        );
+        onAuthenticated(session);
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "No se pudo verificar el correo."
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (isRegistering && !normalizedName) {
       setError("Escribe tu nombre.");
@@ -63,10 +95,13 @@ export default function AuthScreen({ onAuthenticated }: Props) {
     setError("");
 
     try {
-      const session = isRegistering
-        ? await register(normalizedName, normalizedEmail, password)
-        : await login(normalizedEmail, password);
+      if (isRegistering) {
+        await requestRegistrationCode(normalizedName, normalizedEmail, password);
+        setRegistrationStep("code");
+        return;
+      }
 
+      const session = await login(normalizedEmail, password);
       onAuthenticated(session);
     } catch (requestError) {
       setError(
@@ -102,11 +137,13 @@ export default function AuthScreen({ onAuthenticated }: Props) {
           </Text>
           <Text style={styles.description}>
             {isRegistering
-              ? "Registra tus datos para guardar tu progreso."
+              ? registrationStep === "code"
+                ? "Escribe el código que enviamos a tu correo."
+                : "Registra tus datos para guardar tu progreso."
               : "Accede a tu progreso y tus rutinas."}
           </Text>
 
-          {isRegistering && (
+          {isRegistering && registrationStep === "details" && (
             <View style={styles.inputWrapper}>
               <Ionicons name="person-outline" size={20} color="#64748B" />
               <TextInput
@@ -131,9 +168,28 @@ export default function AuthScreen({ onAuthenticated }: Props) {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!isRegistering || registrationStep === "details"}
             />
           </View>
 
+          {isRegistering && registrationStep === "code" && (
+            <View style={styles.inputWrapper}>
+              <Ionicons name="keypad-outline" size={20} color="#64748B" />
+              <TextInput
+                value={verificationCode}
+                onChangeText={setVerificationCode}
+                placeholder="Código de 6 dígitos"
+                placeholderTextColor="#94A3B8"
+                style={styles.input}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          )}
+
+          {(!isRegistering || registrationStep === "details") && (
           <View style={styles.inputWrapper}>
             <Ionicons name="lock-closed-outline" size={20} color="#64748B" />
             <TextInput
@@ -146,8 +202,9 @@ export default function AuthScreen({ onAuthenticated }: Props) {
               autoCapitalize="none"
             />
           </View>
+          )}
 
-          {isRegistering && (
+          {isRegistering && registrationStep === "details" && (
             <View style={styles.inputWrapper}>
               <Ionicons name="checkmark-circle-outline" size={20} color="#64748B" />
               <TextInput
@@ -173,14 +230,33 @@ export default function AuthScreen({ onAuthenticated }: Props) {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.primaryButtonText}>
-                {isRegistering ? "Registrarme" : "Entrar"}
+                {isRegistering
+                  ? registrationStep === "code"
+                    ? "Verificar y crear cuenta"
+                    : "Enviar código"
+                  : "Entrar"}
               </Text>
             )}
           </TouchableOpacity>
 
+          {isRegistering && registrationStep === "code" && (
+            <TouchableOpacity
+              onPress={() => {
+                setRegistrationStep("details");
+                setVerificationCode("");
+                setError("");
+              }}
+              style={styles.switchButton}
+            >
+              <Text style={styles.switchText}>Cambiar datos de registro</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             onPress={() => {
               setMode(isRegistering ? "login" : "register");
+              setRegistrationStep("details");
+              setVerificationCode("");
               setError("");
             }}
             style={styles.switchButton}
