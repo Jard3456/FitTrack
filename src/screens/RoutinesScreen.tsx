@@ -548,7 +548,10 @@ export default function RoutinesScreen({ userRole }: Props) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {selectedRoutine?.exercises.map((exercise, index) => {
                 const draft = exerciseDrafts[exercise.id] ?? {
                   weightKg: "",
