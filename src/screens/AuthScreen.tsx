@@ -31,6 +31,8 @@ export default function AuthScreen({ onAuthenticated }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [registrationStep, setRegistrationStep] = useState<"details" | "code">(
     "details"
@@ -39,6 +41,14 @@ export default function AuthScreen({ onAuthenticated }: Props) {
   const [error, setError] = useState("");
 
   const isRegistering = mode === "register";
+  const passwordRequirements = [
+    { label: "Al menos 8 caracteres", valid: password.length >= 8 },
+    { label: "Al menos una letra mayúscula", valid: /[A-Z]/.test(password) },
+    {
+      label: "Al menos un carácter especial",
+      valid: /[^A-Za-z0-9]/.test(password),
+    },
+  ];
 
   const submit = async () => {
     const normalizedName = name.trim();
@@ -78,6 +88,21 @@ export default function AuthScreen({ onAuthenticated }: Props) {
 
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       setError("Escribe un correo válido.");
+      return;
+    }
+
+    if (isRegistering && password.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    if (isRegistering && !/[A-Z]/.test(password)) {
+      setError("La contraseña debe incluir al menos una letra mayúscula.");
+      return;
+    }
+
+    if (isRegistering && !/[^A-Za-z0-9]/.test(password)) {
+      setError("La contraseña debe incluir al menos un carácter especial.");
       return;
     }
 
@@ -198,10 +223,41 @@ export default function AuthScreen({ onAuthenticated }: Props) {
               placeholder="Contraseña"
               placeholderTextColor="#94A3B8"
               style={styles.input}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               autoCapitalize="none"
             />
+            <TouchableOpacity
+              onPress={() => setShowPassword((visible) => !visible)}
+              style={styles.eyeButton}
+              accessibilityLabel={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color="#64748B"
+              />
+            </TouchableOpacity>
           </View>
+          )}
+
+          {isRegistering && registrationStep === "details" && (
+            <View style={styles.passwordRequirements}>
+              <Text style={styles.requirementsTitle}>
+                La contraseña debe contener:
+              </Text>
+              {passwordRequirements.map((requirement) => (
+                <Text
+                  key={requirement.label}
+                  style={
+                    requirement.valid
+                      ? styles.requirementValid
+                      : styles.requirementInvalid
+                  }
+                >
+                  {requirement.valid ? "✓" : "○"} {requirement.label}
+                </Text>
+              ))}
+            </View>
           )}
 
           {isRegistering && registrationStep === "details" && (
@@ -213,9 +269,30 @@ export default function AuthScreen({ onAuthenticated }: Props) {
                 placeholder="Confirmar contraseña"
                 placeholderTextColor="#94A3B8"
                 style={styles.input}
-                secureTextEntry
+                secureTextEntry={!showPasswordConfirmation}
                 autoCapitalize="none"
               />
+              <TouchableOpacity
+                onPress={() =>
+                  setShowPasswordConfirmation((visible) => !visible)
+                }
+                style={styles.eyeButton}
+                accessibilityLabel={
+                  showPasswordConfirmation
+                    ? "Ocultar confirmación de contraseña"
+                    : "Mostrar confirmación de contraseña"
+                }
+              >
+                <Ionicons
+                  name={
+                    showPasswordConfirmation
+                      ? "eye-off-outline"
+                      : "eye-outline"
+                  }
+                  size={22}
+                  color="#64748B"
+                />
+              </TouchableOpacity>
             </View>
           )}
 
@@ -257,6 +334,8 @@ export default function AuthScreen({ onAuthenticated }: Props) {
               setMode(isRegistering ? "login" : "register");
               setRegistrationStep("details");
               setVerificationCode("");
+              setShowPassword(false);
+              setShowPasswordConfirmation(false);
               setError("");
             }}
             style={styles.switchButton}
@@ -325,6 +404,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
   },
   input: { flex: 1, color: "#111827", marginLeft: 10, fontSize: 16 },
+  eyeButton: {
+    padding: 6,
+    marginLeft: 6,
+  },
+  passwordRequirements: {
+    marginTop: -4,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  requirementsTitle: {
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  requirementValid: {
+    color: "#15803D",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  requirementInvalid: {
+    color: "#64748B",
+    fontSize: 13,
+    lineHeight: 19,
+  },
   error: { color: "#B91C1C", lineHeight: 19, marginBottom: 12 },
   primaryButton: {
     height: 54,

@@ -108,6 +108,19 @@ function validateCredentials(email, password) {
   return null;
 }
 
+function validateRegistrationPassword(password) {
+  if (password.length < 8) {
+    return "La contraseÃ±a debe tener al menos 8 caracteres.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "La contraseÃ±a debe incluir al menos una letra mayÃºscula.";
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "La contraseÃ±a debe incluir al menos un carÃ¡cter especial.";
+  }
+  return null;
+}
+
 function createVerificationCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
@@ -158,9 +171,13 @@ app.post("/api/auth/register/request-code", async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const validationError = validateCredentials(email, password);
+  const registrationPasswordError = validateRegistrationPassword(password);
 
   if (!name) return res.status(400).json({ message: "El nombre es requerido." });
   if (validationError) return res.status(400).json({ message: validationError });
+  if (registrationPasswordError) {
+    return res.status(400).json({ message: registrationPasswordError });
+  }
   if (!mailTransporter) {
     return res.status(503).json({
       message: "El servicio de correo no está configurado en el servidor.",
