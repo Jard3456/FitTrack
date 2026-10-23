@@ -1,8 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform, StyleSheet, useWindowDimensions } from "react-native";
+import { Platform, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 
 import HomeScreen from "../screens/HomeScreen";
 import RoutinesScreen from "../screens/RoutinesScreen";
@@ -42,6 +42,7 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
   const isWeb = Platform.OS === "web";
   const isDesktopWeb = isWeb && width >= 1100;
   const isCompactWeb = isWeb && width < 760;
+  const [sidebarVisible, setSidebarVisible] = useState(true);
 
   return (
     <NavigationContainer>
@@ -51,7 +52,9 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
           tabBarVariant: isDesktopWeb ? "material" : "uikit",
           tabBarLabelPosition: isDesktopWeb ? "beside-icon" : "below-icon",
           tabBarShowLabel: !isCompactWeb,
-          tabBarStyle: isDesktopWeb ? styles.desktopTabBar : undefined,
+          tabBarStyle: isDesktopWeb
+            ? [styles.desktopTabBar, !sidebarVisible && styles.hiddenTabBar]
+            : undefined,
           tabBarLabelStyle: isDesktopWeb
             ? styles.desktopTabLabel
             : isWeb && width < 1100
@@ -62,6 +65,22 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
             backgroundColor: "#2563EB",
           },
           headerTintColor: "#fff",
+          headerLeft: isDesktopWeb
+            ? () => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={sidebarVisible ? "Ocultar menú" : "Mostrar menú"}
+                  onPress={() => setSidebarVisible((visible) => !visible)}
+                  style={styles.menuButton}
+                >
+                  <Ionicons
+                    name={sidebarVisible ? "menu" : "menu-outline"}
+                    size={25}
+                    color="#FFFFFF"
+                  />
+                </Pressable>
+              )
+            : undefined,
 
           tabBarActiveTintColor: "#2563EB",
 
@@ -175,6 +194,16 @@ const styles = StyleSheet.create({
     borderRightColor: "#E2E8F0",
     borderRightWidth: 1,
     paddingTop: 10,
+  },
+  hiddenTabBar: { display: "none" },
+  menuButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
+    marginRight: 8,
+    cursor: "pointer",
   },
   desktopTabLabel: { fontSize: 13, fontWeight: "600" },
   tabletTabLabel: { fontSize: 10, lineHeight: 12 },

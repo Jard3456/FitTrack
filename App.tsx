@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 
 import AppNavigator from "./src/navigation/AppNavigator";
 import AuthScreen from "./src/screens/AuthScreen";
@@ -20,6 +20,47 @@ export default function App() {
       .catch(() => setSession(null));
   }, []);
 
+  const handleLogout = useCallback(async () => {
+    await logout();
+    setSession(null);
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !session) return;
+
+    const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
+    let inactivityTimer: ReturnType<typeof setTimeout>;
+
+    const resetInactivityTimer = () => {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        void handleLogout();
+      }, INACTIVITY_LIMIT_MS);
+    };
+
+    const activityEvents = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "scroll",
+      "touchstart",
+      "pointerdown",
+      "wheel",
+    ] as const;
+
+    activityEvents.forEach((eventName) =>
+      window.addEventListener(eventName, resetInactivityTimer, { passive: true })
+    );
+    resetInactivityTimer();
+
+    return () => {
+      clearTimeout(inactivityTimer);
+      activityEvents.forEach((eventName) =>
+        window.removeEventListener(eventName, resetInactivityTimer)
+      );
+    };
+  }, [handleLogout, session]);
+
   if (session === undefined) {
     return (
       <View style={styles.loading}>
@@ -31,11 +72,6 @@ export default function App() {
   if (!session) {
     return <AuthScreen onAuthenticated={setSession} />;
   }
-
-  const handleLogout = async () => {
-    await logout();
-    setSession(null);
-  };
 
   return <AppNavigator onLogout={handleLogout} userRole={session.user.role} />;
 }
