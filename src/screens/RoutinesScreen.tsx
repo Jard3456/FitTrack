@@ -569,6 +569,11 @@ export default function RoutinesScreen({ userRole }: Props) {
                       {index + 1}. {exercise.name}
                     </Text>
                     <Text style={styles.exerciseLogType}>{exercise.type}</Text>
+                    <Text style={styles.instructionsLabel}>Instrucciones</Text>
+                    <Text style={styles.exerciseInstructions}>
+                      {exercise.instructions?.trim() ||
+                        "El entrenador no agrego una descripcion para este ejercicio."}
+                    </Text>
 
                     {canCompleteSelectedRoutine ? (
                       <>
@@ -1052,6 +1057,8 @@ const styles = StyleSheet.create({
   },
   exerciseLogTitle: { color: "#1E293B", fontSize: 16, fontWeight: "bold" },
   exerciseLogType: { color: "#2563EB", fontSize: 12, fontWeight: "600", marginTop: 4 },
+  instructionsLabel: { color: "#334155", fontSize: 13, fontWeight: "700", marginTop: 12 },
+  exerciseInstructions: { color: "#475569", fontSize: 14, lineHeight: 21, marginTop: 5 },
   inputLabel: { color: "#475569", fontSize: 13, fontWeight: "600", marginTop: 12, marginBottom: 6 },
   modalInput: {
     backgroundColor: "#F8FAFC",

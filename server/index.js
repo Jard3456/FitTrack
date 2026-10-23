@@ -398,7 +398,8 @@ app.get("/api/admin/routines", requireAuth, requireRole("administrador"), async 
                WHERE rc.routine_id = r.id) AS completedCount,
               (SELECT MAX(rc.completed_at) FROM routine_completions rc
                WHERE rc.routine_id = r.id) AS lastCompletedAt,
-              ce.id AS exerciseId, ce.name AS exerciseName, ce.type AS exerciseType
+              ce.id AS exerciseId, ce.name AS exerciseName, ce.type AS exerciseType,
+              ce.instructions AS exerciseInstructions
        FROM routines r
        INNER JOIN users u ON u.id = r.user_id
        INNER JOIN users t ON t.id = r.trainer_id
@@ -439,6 +440,7 @@ app.get("/api/admin/routines", requireAuth, requireRole("administrador"), async 
           id: String(row.exerciseId),
           name: row.exerciseName,
           type: row.exerciseType,
+          instructions: row.exerciseInstructions,
         });
       }
     }
@@ -711,7 +713,8 @@ app.get("/api/routines", requireAuth, async (req, res) => {
                WHERE rc.routine_id = r.id AND rc.user_id = ?) AS completedCount,
               (SELECT MAX(rc.completed_at) FROM routine_completions rc
                WHERE rc.routine_id = r.id AND rc.user_id = ?) AS lastCompletedAt,
-              ce.id AS exerciseId, ce.name AS exerciseName, ce.type AS exerciseType
+              ce.id AS exerciseId, ce.name AS exerciseName, ce.type AS exerciseType,
+              ce.instructions AS exerciseInstructions
        FROM routines r
        LEFT JOIN routine_exercises re ON re.routine_id = r.id
        LEFT JOIN custom_exercises ce ON ce.id = re.exercise_id
@@ -741,6 +744,7 @@ app.get("/api/routines", requireAuth, async (req, res) => {
           id: String(row.exerciseId),
           name: row.exerciseName,
           type: row.exerciseType,
+          instructions: row.exerciseInstructions,
         });
       }
     }

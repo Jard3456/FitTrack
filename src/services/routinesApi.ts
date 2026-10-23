@@ -9,7 +9,7 @@ export type AssignedRoutine = {
   scheduledDate: string;
   completedCount: number;
   lastCompletedAt: string | null;
-  exercises: Array<{ id: string; name: string; type: string }>;
+  exercises: Array<{ id: string; name: string; type: string; instructions: string }>;
 };
 
 export type AdminRoutine = AssignedRoutine & {
