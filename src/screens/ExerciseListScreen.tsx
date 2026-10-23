@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   errorText: { color: "#991B1B", flex: 1, marginHorizontal: 9, lineHeight: 19 },
   retry: { color: "#B91C1C", fontWeight: "bold" },
   modalContainer: { flex: 1, backgroundColor: "#F4F6F9" },
-  modalContent: { padding: 20, paddingBottom: 40 },
+  modalContent: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 20, paddingBottom: 40 },
   modalHeader: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   modalTitle: { flex: 1, color: "#111827", fontSize: 28, fontWeight: "bold" },
   formLabel: { color: "#374151", fontWeight: "600", marginBottom: 7, marginTop: 12 },

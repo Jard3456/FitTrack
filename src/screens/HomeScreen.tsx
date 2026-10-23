@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   View,
   Image,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -39,6 +40,8 @@ const quickAccessItems: Array<{
 
 export default function HomeScreen() {
   const navigation = useNavigation<Navigation>();
+  const { width } = useWindowDimensions();
+  const compactStats = width < 560;
   const [progress, setProgress] = useState<UserProgress | null>(null);
 
   const loadProgress = useCallback(async () => {
@@ -126,20 +129,20 @@ export default function HomeScreen() {
       </View>
 
       <Text style={styles.section}>Resumen</Text>
-      <View style={styles.stats}>
-        <View style={styles.statCard}>
+      <View style={[styles.stats, compactStats && styles.statsCompact]}>
+        <View style={[styles.statCard, compactStats && styles.statCardCompact]}>
           <Text style={styles.number}>
             {progress?.weight ? `${progress.weight} kg` : "--"}
           </Text>
           <Text style={styles.statText}>Peso</Text>
         </View>
 
-        <View style={styles.statCard}>
+        <View style={[styles.statCard, compactStats && styles.statCardCompact]}>
           <Text style={styles.number}>{bmi ?? "--"}</Text>
           <Text style={styles.statText}>IMC</Text>
         </View>
 
-        <View style={styles.statCard}>
+        <View style={[styles.statCard, compactStats && styles.statCardCompact]}>
           <Text style={styles.objective} numberOfLines={2}>
             {progress?.objective ?? "Sin datos"}
           </Text>
@@ -229,6 +232,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 20,
   },
+  statsCompact: { flexWrap: "wrap" },
   statCard: {
     flex: 1,
     minHeight: 100,
@@ -239,6 +243,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 5,
   },
+  statCardCompact: { minWidth: 120 },
   number: {
     fontSize: 20,
     fontWeight: "bold",

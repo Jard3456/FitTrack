@@ -2,6 +2,7 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { Platform, StyleSheet, useWindowDimensions } from "react-native";
 
 import HomeScreen from "../screens/HomeScreen";
 import RoutinesScreen from "../screens/RoutinesScreen";
@@ -14,6 +15,7 @@ import AdminTripsScreen from "../screens/AdminTripsScreen";
 import AdminMoviesScreen from "../screens/AdminMoviesScreen";
 import ExerciseNavigator from "./ExerciseNavigator";
 import { AuthUser } from "../services/authApi";
+import ResponsiveScreen from "../components/ResponsiveScreen";
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
@@ -36,10 +38,26 @@ type Props = {
 };
 
 export default function AppNavigator({ onLogout, userRole }: Props) {
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === "web";
+  const isDesktopWeb = isWeb && width >= 1100;
+  const isCompactWeb = isWeb && width < 760;
+
   return (
     <NavigationContainer>
       <Tab.Navigator
         screenOptions={({ route }) => ({
+          tabBarPosition: isDesktopWeb ? "left" : "bottom",
+          tabBarVariant: isDesktopWeb ? "material" : "uikit",
+          tabBarLabelPosition: isDesktopWeb ? "beside-icon" : "below-icon",
+          tabBarShowLabel: !isCompactWeb,
+          tabBarStyle: isDesktopWeb ? styles.desktopTabBar : undefined,
+          tabBarLabelStyle: isDesktopWeb
+            ? styles.desktopTabLabel
+            : isWeb && width < 1100
+              ? styles.tabletTabLabel
+              : undefined,
+          sceneStyle: styles.scene,
           headerStyle: {
             backgroundColor: "#2563EB",
           },
@@ -93,25 +111,29 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
           },
         })}
       >
-        <Tab.Screen name="Inicio" component={HomeScreen} />
-        <Tab.Screen name="Rutinas">
-          {() => <RoutinesScreen userRole={userRole} />}
+        <Tab.Screen name="Inicio">
+          {() => <ResponsiveScreen><HomeScreen /></ResponsiveScreen>}
         </Tab.Screen>
-        <Tab.Screen name="Progreso" component={ProgressScreen} />
+        <Tab.Screen name="Rutinas">
+          {() => <ResponsiveScreen><RoutinesScreen userRole={userRole} /></ResponsiveScreen>}
+        </Tab.Screen>
+        <Tab.Screen name="Progreso">
+          {() => <ResponsiveScreen><ProgressScreen /></ResponsiveScreen>}
+        </Tab.Screen>
         <Tab.Screen
           name="Ejercicios"
-          component={ExerciseNavigator}
+          children={() => <ResponsiveScreen><ExerciseNavigator /></ResponsiveScreen>}
           options={{ headerShown: false, title: "Biblioteca" }}
         />
         <Tab.Screen
           name="Recursos"
-          component={ApiResourcesScreen}
+          children={() => <ResponsiveScreen><ApiResourcesScreen /></ResponsiveScreen>}
           options={{ title: "Recursos API" }}
         />
         {userRole === "administrador" ? (
           <Tab.Screen
             name="Administracion"
-            component={AdminUsersScreen}
+            children={() => <ResponsiveScreen><AdminUsersScreen /></ResponsiveScreen>}
             options={{ title: "Usuarios" }}
           />
         ) : null}
@@ -120,27 +142,40 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
             name="Entrenamiento"
             options={{ title: userRole === "administrador" ? "Gestión global" : "Mis usuarios" }}
           >
-            {() => <TrainerUsersScreen userRole={userRole} />}
+            {() => <ResponsiveScreen><TrainerUsersScreen userRole={userRole} /></ResponsiveScreen>}
           </Tab.Screen>
         ) : null}
         {userRole === "administrador" ? (
           <>
             <Tab.Screen
               name="Viajes"
-              component={AdminTripsScreen}
+              children={() => <ResponsiveScreen><AdminTripsScreen /></ResponsiveScreen>}
               options={{ title: "Viajes" }}
             />
             <Tab.Screen
               name="Peliculas"
-              component={AdminMoviesScreen}
+              children={() => <ResponsiveScreen><AdminMoviesScreen /></ResponsiveScreen>}
               options={{ title: "Películas" }}
             />
           </>
         ) : null}
         <Tab.Screen name="Perfil">
-          {() => <ProfileScreen onLogout={onLogout} userRole={userRole} />}
+          {() => <ResponsiveScreen><ProfileScreen onLogout={onLogout} userRole={userRole} /></ResponsiveScreen>}
         </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  scene: { backgroundColor: "#F4F6F9" },
+  desktopTabBar: {
+    width: 232,
+    backgroundColor: "#FFFFFF",
+    borderRightColor: "#E2E8F0",
+    borderRightWidth: 1,
+    paddingTop: 10,
+  },
+  desktopTabLabel: { fontSize: 13, fontWeight: "600" },
+  tabletTabLabel: { fontSize: 10, lineHeight: 12 },
+});

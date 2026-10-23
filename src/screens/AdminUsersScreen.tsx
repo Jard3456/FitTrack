@@ -288,6 +288,7 @@ const styles = StyleSheet.create({
   subtitle: { color: "#64748B", fontSize: 15, lineHeight: 21, marginTop: 6 },
   tabs: {
     flexDirection: "row",
+    flexWrap: "wrap",
     backgroundColor: "#E2E8F0",
     borderRadius: 14,
     padding: 4,
@@ -296,6 +297,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minWidth: 104,
     minHeight: 76,
     borderRadius: 11,
     alignItems: "center",
@@ -381,6 +383,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 20,
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
   },
   modalHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 20 },
   modalHeadingContent: { flex: 1 },

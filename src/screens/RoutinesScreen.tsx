@@ -843,6 +843,7 @@ const styles = StyleSheet.create({
   assignRoutineButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "bold" },
   tabs: {
     flexDirection: "row",
+    flexWrap: "wrap",
     backgroundColor: "#E2E8F0",
     borderRadius: 14,
     padding: 4,
@@ -851,6 +852,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minWidth: 92,
     minHeight: 50,
     borderRadius: 11,
     alignItems: "center",
@@ -892,8 +894,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.45)",
     justifyContent: "flex-end",
+    alignItems: "center",
+    paddingHorizontal: 12,
   },
   modalCard: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     backgroundColor: "#F8FAFC",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
