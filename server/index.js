@@ -16,6 +16,7 @@ const jwtSecret = process.env.JWT_SECRET || "change-this-development-secret";
 const allowedRoles = new Set(["usuario", "entrenador", "administrador"]);
 const verificationCodeLifetimeMinutes = 10;
 const verificationMaxAttempts = 5;
+const appTimeZone = process.env.APP_TIME_ZONE || "America/Guatemala";
 
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const mailTransporter =
@@ -45,6 +46,17 @@ const pool = mysql.createPool({
 
 app.use(cors());
 app.use(express.json());
+
+function getAppLocalDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: appTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 function publicUser(user) {
   return {
@@ -758,6 +770,7 @@ app.get("/api/routines", requireAuth, async (req, res) => {
 
 app.post("/api/routines/:routineId/complete", requireAuth, async (req, res) => {
   const routineId = String(req.params.routineId);
+  const today = getAppLocalDate();
   const submittedLogs = Array.isArray(req.body?.exercises)
     ? req.body.exercises
     : [];
@@ -775,9 +788,9 @@ app.post("/api/routines/:routineId/complete", requireAuth, async (req, res) => {
 
     const [todayRows] = await pool.execute(
       `SELECT id FROM routines
-       WHERE id = ? AND user_id = ? AND scheduled_date = CURRENT_DATE
+       WHERE id = ? AND user_id = ? AND scheduled_date = ?
        LIMIT 1`,
-      [routineId, req.userId]
+      [routineId, req.userId, today]
     );
 
     if (!todayRows.length) {
@@ -905,6 +918,7 @@ app.get(
   requireAuth,
   requireRole("entrenador", "administrador"),
   async (req, res) => {
+    const today = getAppLocalDate();
     try {
       if (req.userRole !== "administrador") {
         const [assignment] = await pool.execute(
@@ -948,8 +962,8 @@ app.get(
                 r.duration_minutes AS durationMinutes,
                 DATE_FORMAT(r.scheduled_date, '%Y-%m-%d') AS scheduledDate,
                 CASE
-                  WHEN r.scheduled_date < CURRENT_DATE THEN 'past'
-                  WHEN r.scheduled_date > CURRENT_DATE THEN 'future'
+                  WHEN r.scheduled_date < ? THEN 'past'
+                  WHEN r.scheduled_date > ? THEN 'future'
                   ELSE 'current'
                 END AS period,
                 rc.id AS completionId, rc.completed_at AS completedAt,
@@ -968,7 +982,7 @@ app.get(
            ON el.completion_id = rc.id AND el.exercise_id = ce.id
          WHERE r.user_id = ? AND r.trainer_id = ?
          ORDER BY r.scheduled_date DESC, re.exercise_order ASC`,
-        [req.params.userId, req.userId]
+        [today, today, req.params.userId, req.userId]
       );
 
       const routinesById = new Map();
