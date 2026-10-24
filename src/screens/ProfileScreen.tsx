@@ -17,6 +17,7 @@ import {
   UserProgress,
 } from "../services/databaseApi";
 import { formatBmi } from "../utils/fitness";
+import { showUserFeedback } from "../utils/userFeedback";
 import { AuthUser } from "../services/authApi";
 
 const PROGRESS_STORAGE_KEY = "userProgress";
@@ -44,6 +45,7 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
   const [name, setName] = useState("JARD GAMES");
   const [editing, setEditing] = useState(false);
   const [newName, setNewName] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   const loadData = async () => {
     try {
@@ -87,33 +89,52 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
   };
 
   const saveName = async () => {
-    if (!newName.trim()) return;
+    const normalizedName = newName.trim();
+    if (!normalizedName) {
+      showUserFeedback("Nombre requerido", "Escribe un nombre antes de guardar.");
+      return;
+    }
+    if (savingName) return;
 
+    setSavingName(true);
     try {
       const data = await AsyncStorage.getItem(PROGRESS_STORAGE_KEY);
 
       const user = data ? (JSON.parse(data) as UserProgress) : {};
 
-      user.name = newName;
+      user.name = normalizedName;
 
       await AsyncStorage.setItem(
         PROGRESS_STORAGE_KEY,
         JSON.stringify(user)
       );
 
+      let syncWarning = "";
       if (isDatabaseConfigured) {
         try {
           await saveUserProgress(user);
         } catch (error) {
           console.warn("No se pudo sincronizar el nombre", error);
+          syncWarning = error instanceof Error
+            ? `${error.message} El nombre quedó guardado en este dispositivo.`
+            : "El nombre quedó guardado en este dispositivo, pero no se sincronizó con el servidor.";
         }
       }
 
-      setName(newName);
+      setName(normalizedName);
       setEditing(false);
       setNewName("");
+      showUserFeedback(
+        syncWarning ? "Guardado localmente" : "Perfil actualizado",
+        syncWarning || "Tu nombre se guardó correctamente."
+      );
     } catch (error) {
-      console.log(error);
+      showUserFeedback(
+        "No se pudo guardar",
+        error instanceof Error ? error.message : "Ocurrió un error al guardar tu nombre."
+      );
+    } finally {
+      setSavingName(false);
     }
   };
 
@@ -177,10 +198,11 @@ export default function ProfileScreen({ onLogout, userRole }: Props) {
             <TouchableOpacity
               style={styles.saveButton}
               onPress={saveName}
+              disabled={savingName}
             >
 
               <Text style={styles.saveText}>
-                Guardar
+                {savingName ? "Guardando..." : "Guardar"}
               </Text>
 
             </TouchableOpacity>

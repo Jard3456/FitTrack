@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -28,6 +27,7 @@ import { getCustomExercises } from "../services/customExercisesApi";
 import { getTrainerUsers, TrainerUser } from "../services/trainerUsersApi";
 import { AuthUser } from "../services/authApi";
 import { Exercise } from "../types/exercise";
+import { showUserFeedback } from "../utils/userFeedback";
 
 type ExerciseDraft = {
   weightKg: string;
@@ -271,7 +271,7 @@ export default function RoutinesScreen({ userRole }: Props) {
     if (!selectedRoutine) return;
 
     if (selectedRoutine.scheduledDate !== today) {
-      Alert.alert(
+      showUserFeedback(
         "Rutina fuera de fecha",
         "Solo puedes completar la rutina programada para el día actual."
       );
@@ -279,7 +279,7 @@ export default function RoutinesScreen({ userRole }: Props) {
     }
 
     if (selectedRoutine.completedCount > 0) {
-      Alert.alert("Rutina ya completada", "Esta rutina ya fue registrada como completada.");
+      showUserFeedback("Rutina ya completada", "Esta rutina ya fue registrada como completada.");
       return;
     }
 
@@ -303,9 +303,9 @@ export default function RoutinesScreen({ userRole }: Props) {
       const routineName = selectedRoutine.title;
       setSelectedRoutine(null);
       await loadRoutines(true);
-      Alert.alert("Rutina completada", `El progreso de ${routineName} fue guardado.`);
+      showUserFeedback("Rutina completada", `El progreso de ${routineName} fue guardado.`);
     } catch (completionError) {
-      Alert.alert(
+      showUserFeedback(
         "No se pudo completar",
         completionError instanceof Error
           ? completionError.message
@@ -339,7 +339,7 @@ export default function RoutinesScreen({ userRole }: Props) {
     } catch (assignmentError) {
       setTrainerUsers([]);
       setTrainerExercises([]);
-      Alert.alert(
+      showUserFeedback(
         "No se pudo preparar la asignación",
         assignmentError instanceof Error
           ? assignmentError.message
@@ -363,8 +363,21 @@ export default function RoutinesScreen({ userRole }: Props) {
   };
 
   const saveAssignedRoutine = async () => {
+    if (!trainerUsers.length) {
+      showUserFeedback("No hay usuarios disponibles", "Agrega o asigna un usuario antes de crear una rutina.");
+      return;
+    }
+
+    if (!trainerExercises.length) {
+      showUserFeedback(
+        "No hay ejercicios disponibles",
+        "Registra al menos un ejercicio personalizado en la Biblioteca antes de crear una rutina."
+      );
+      return;
+    }
+
     if (!selectedUserId) {
-      Alert.alert("Selecciona un usuario", "Elige el usuario que recibirá la rutina.");
+      showUserFeedback("Selecciona un usuario", "Elige el usuario que recibirá la rutina.");
       return;
     }
 
@@ -376,7 +389,7 @@ export default function RoutinesScreen({ userRole }: Props) {
       durationMinutes <= 0 ||
       !/^\d{4}-\d{2}-\d{2}$/.test(routineDate)
     ) {
-      Alert.alert(
+      showUserFeedback(
         "Datos incompletos",
         "Escribe un título, selecciona una fecha, indica la duración y agrega al menos un ejercicio."
       );
@@ -393,9 +406,9 @@ export default function RoutinesScreen({ userRole }: Props) {
         exerciseIds: selectedExerciseIds,
       });
       setAssignModalVisible(false);
-      Alert.alert("Rutina asignada", "La rutina fue asignada correctamente.");
+      showUserFeedback("Rutina asignada", "La rutina fue asignada correctamente.");
     } catch (assignmentError) {
-      Alert.alert(
+      showUserFeedback(
         "No se pudo asignar la rutina",
         assignmentError instanceof Error
           ? assignmentError.message
@@ -805,7 +818,7 @@ export default function RoutinesScreen({ userRole }: Props) {
                   <TouchableOpacity
                     style={styles.saveAssignmentButton}
                     onPress={saveAssignedRoutine}
-                    disabled={savingAssignment || !trainerUsers.length || !trainerExercises.length}
+                    disabled={savingAssignment}
                     activeOpacity={0.85}
                   >
                     {savingAssignment ? (

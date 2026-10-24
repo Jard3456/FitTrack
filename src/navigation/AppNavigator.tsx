@@ -42,10 +42,14 @@ export default function AppNavigator({ onLogout, userRole }: Props) {
   const isWeb = Platform.OS === "web";
   const isDesktopWeb = isWeb && width >= 1100;
   const isCompactWeb = isWeb && width < 760;
-  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      onStateChange={() => {
+        if (isDesktopWeb) setSidebarVisible(false);
+      }}
+    >
       <Tab.Navigator
         screenOptions={({ route }) => ({
           tabBarPosition: isDesktopWeb ? "left" : "bottom",

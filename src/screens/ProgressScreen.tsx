@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import DropdownField, { DropdownOption } from "../components/DropdownField";
 
 import {
   getUserProgress,
@@ -24,8 +23,16 @@ import {
   normalizeHeightInMeters,
   parseMeasurement,
 } from "../utils/fitness";
+import { showUserFeedback } from "../utils/userFeedback";
 
 const PROGRESS_STORAGE_KEY = "userProgress";
+const objectiveOptions: DropdownOption[] = [
+  { label: "Ganar masa muscular", value: "Ganar masa muscular", icon: "barbell-outline" },
+  { label: "Perder grasa", value: "Perder grasa", icon: "flame-outline" },
+  { label: "Mantener peso", value: "Mantener peso", icon: "scale-outline" },
+  { label: "Mejorar resistencia", value: "Mejorar resistencia", icon: "bicycle-outline" },
+  { label: "Aumentar fuerza", value: "Aumentar fuerza", icon: "fitness-outline" },
+];
 
 function formatLocalDate(date = new Date()) {
   const year = date.getFullYear();
@@ -119,7 +126,7 @@ export default function ProgressScreen() {
       parsedWeight <= 0 ||
       heightInMeters === null
     ) {
-      Alert.alert(
+      showUserFeedback(
         "Datos incompletos",
         "Ingresa un peso válido y una altura válida en metros o centímetros."
       );
@@ -127,7 +134,7 @@ export default function ProgressScreen() {
     }
 
     if (parsedTargetWeight === null || parsedTargetWeight <= 0) {
-      Alert.alert("Meta inválida", "Ingresa una meta de peso mayor que cero.");
+      showUserFeedback("Meta inválida", "Ingresa una meta de peso mayor que cero.");
       return;
     }
 
@@ -163,14 +170,14 @@ export default function ProgressScreen() {
       await AsyncStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(data));
     } catch {
       setSaving(false);
-      Alert.alert("Error", "No se pudo guardar la información localmente.");
+      showUserFeedback("Error", "No se pudo guardar la información localmente.");
       return;
     }
 
     if (!isDatabaseConfigured) {
       setCanRecordWeight(false);
       setSaving(false);
-      Alert.alert(
+      showUserFeedback(
         "Guardado local",
         "El progreso se guardó en el dispositivo, pero el backend no está configurado."
       );
@@ -180,9 +187,9 @@ export default function ProgressScreen() {
     try {
       await saveUserProgress(data);
       setCanRecordWeight(false);
-      Alert.alert("Éxito", "Progreso y meta guardados en la base de datos.");
+      showUserFeedback("Éxito", "Progreso y meta guardados en la base de datos.");
     } catch (error) {
-      Alert.alert(
+      showUserFeedback(
         "Guardado local",
         error instanceof Error
           ? `${error.message} El progreso quedó guardado localmente.`
@@ -246,15 +253,12 @@ export default function ProgressScreen() {
         />
 
         <Text style={styles.label}>Objetivo</Text>
-        <View style={styles.pickerContainer}>
-          <Picker selectedValue={objective} onValueChange={setObjective}>
-            <Picker.Item label="💪 Ganar masa muscular" value="Ganar masa muscular" />
-            <Picker.Item label="🔥 Perder grasa" value="Perder grasa" />
-            <Picker.Item label="⚖️ Mantener peso" value="Mantener peso" />
-            <Picker.Item label="🏃 Mejorar resistencia" value="Mejorar resistencia" />
-            <Picker.Item label="🏋️ Aumentar fuerza" value="Aumentar fuerza" />
-          </Picker>
-        </View>
+        <DropdownField
+          value={objective}
+          options={objectiveOptions}
+          onChange={setObjective}
+          disabled={saving}
+        />
       </View>
 
       <View style={styles.goalCard}>
@@ -334,14 +338,6 @@ const styles = StyleSheet.create({
   disabledInput: { backgroundColor: "#F1F5F9", color: "#64748B" },
   helper: { color: "#64748B", fontSize: 12, marginBottom: 18 },
   lockedHelper: { color: "#B45309", fontSize: 12, marginBottom: 18 },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 12,
-    marginBottom: 4,
-    overflow: "hidden",
-    backgroundColor: "#FFFFFF",
-  },
   goalCard: {
     backgroundColor: "#FFFFFF",
     marginTop: 18,

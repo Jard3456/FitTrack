@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { showUserFeedback } from "../utils/userFeedback";
 
 import { AuthUser } from "../services/authApi";
 import {
@@ -94,9 +94,9 @@ export default function AdminUsersScreen() {
         )
       );
       setSelectedUser(null);
-      Alert.alert("Rol actualizado", "El cambio se guardó correctamente.");
+      showUserFeedback("Rol actualizado", "El cambio se guardó correctamente.");
     } catch (saveError) {
-      Alert.alert(
+      showUserFeedback(
         "No se pudo actualizar",
         saveError instanceof Error
           ? saveError.message

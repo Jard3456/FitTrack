@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { deleteCustomExercise } from "../services/customExercisesApi";
+import { confirmUserAction, showUserFeedback } from "../utils/userFeedback";
 import { ExerciseStackParamList } from "../types/exercise";
 import {
   translateDifficulty,
@@ -31,28 +31,23 @@ export default function ExerciseDetailScreen({ route, navigation }: Props) {
   const removeCustomExercise = () => {
     if (!exercise.isCustom || !exercise.customId) return;
 
-    Alert.alert(
+    void confirmUserAction(
       "Eliminar ejercicio",
       "¿Quieres eliminar este ejercicio de tu biblioteca?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteCustomExercise(exercise.customId!);
-              navigation.goBack();
-            } catch (error) {
-              Alert.alert(
-                "No se pudo eliminar",
-                error instanceof Error ? error.message : "Intenta nuevamente."
-              );
-            }
-          },
-        },
-      ]
-    );
+      "Eliminar",
+      true
+    ).then(async (confirmed) => {
+      if (!confirmed) return;
+      try {
+        await deleteCustomExercise(exercise.customId!);
+        navigation.goBack();
+      } catch (error) {
+        showUserFeedback(
+          "No se pudo eliminar",
+          error instanceof Error ? error.message : "Intenta nuevamente."
+        );
+      }
+    });
   };
 
   return (

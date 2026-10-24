@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -13,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { showUserFeedback } from "../utils/userFeedback";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { getExercises } from "../services/exercisesApi";
@@ -149,7 +149,7 @@ export default function ExerciseListScreen({ navigation }: Props) {
 
   const saveCustomExercise = async () => {
     if (!customExercise.name.trim() || !customExercise.instructions.trim()) {
-      Alert.alert(
+      showUserFeedback(
         "Datos incompletos",
         "El nombre y las instrucciones son obligatorios."
       );
@@ -177,7 +177,7 @@ export default function ExerciseListScreen({ navigation }: Props) {
           ? requestError.message
           : "No se pudo guardar el ejercicio personalizado.";
       setError(message);
-      Alert.alert("No se pudo guardar", message);
+      showUserFeedback("No se pudo guardar", message);
     } finally {
       setSavingCustom(false);
     }

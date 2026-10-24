@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -29,6 +28,7 @@ import {
 } from "../services/routinesApi";
 import { Exercise } from "../types/exercise";
 import { calculateWeightProgress } from "../utils/fitness";
+import { confirmUserAction, showUserFeedback } from "../utils/userFeedback";
 import { AuthUser } from "../services/authApi";
 
 type UserFilter = "todos" | "disponibles" | "mios";
@@ -255,9 +255,9 @@ export default function TrainerUsersScreen({ userRole }: Props) {
     try {
       await assignTrainerUser(user.id);
       await loadUsers(true);
-      Alert.alert("Usuario agregado", `${user.name} ahora está bajo tu entrenamiento.`);
+      showUserFeedback("Usuario agregado", `${user.name} ahora está bajo tu entrenamiento.`);
     } catch (assignError) {
-      Alert.alert(
+      showUserFeedback(
         "No se pudo agregar",
         assignError instanceof Error
           ? assignError.message
@@ -270,33 +270,27 @@ export default function TrainerUsersScreen({ userRole }: Props) {
   };
 
   const releaseUser = (user: TrainerUser) => {
-    Alert.alert(
+    void confirmUserAction(
       "Dejar de entrenar",
       `¿Quieres liberar a ${user.name} para que pueda ser asignado a otro entrenador?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Liberar",
-          style: "destructive",
-          onPress: async () => {
-            setProcessingId(user.id);
-            try {
-              await removeTrainerUser(user.id);
-              await loadUsers(true);
-            } catch (removeError) {
-              Alert.alert(
-                "No se pudo liberar",
-                removeError instanceof Error
-                  ? removeError.message
-                  : "No se pudo liberar el usuario."
-              );
-            } finally {
-              setProcessingId(null);
-            }
-          },
-        },
-      ]
-    );
+      "Liberar",
+      true
+    ).then(async (confirmed) => {
+      if (!confirmed) return;
+      setProcessingId(user.id);
+      try {
+        await removeTrainerUser(user.id);
+        await loadUsers(true);
+        showUserFeedback("Usuario liberado", "El usuario ya puede asignarse a otro entrenador.");
+      } catch (removeError) {
+        showUserFeedback(
+          "No se pudo liberar",
+          removeError instanceof Error ? removeError.message : "No se pudo liberar el usuario."
+        );
+      } finally {
+        setProcessingId(null);
+      }
+    });
   };
 
   const openRoutineModal = async (user: TrainerUser) => {
@@ -312,7 +306,7 @@ export default function TrainerUsersScreen({ userRole }: Props) {
       setTrainerExercises(await getCustomExercises());
     } catch (exerciseError) {
       setTrainerExercises([]);
-      Alert.alert(
+      showUserFeedback(
         "No se pudieron cargar los ejercicios",
         exerciseError instanceof Error
           ? exerciseError.message
@@ -338,6 +332,14 @@ export default function TrainerUsersScreen({ userRole }: Props) {
   const saveRoutine = async () => {
     if (!routineUser) return;
 
+    if (!trainerExercises.length) {
+      showUserFeedback(
+        "No hay ejercicios disponibles",
+        "Registra al menos un ejercicio personalizado en la Biblioteca antes de asignar una rutina."
+      );
+      return;
+    }
+
     const durationMinutes = Number(routineDuration);
     if (
       !routineTitle.trim() ||
@@ -346,7 +348,7 @@ export default function TrainerUsersScreen({ userRole }: Props) {
       durationMinutes <= 0 ||
       !/^\d{4}-\d{2}-\d{2}$/.test(routineDate)
     ) {
-      Alert.alert(
+      showUserFeedback(
         "Datos incompletos",
         "Escribe un título, una fecha válida, una duración y selecciona al menos un ejercicio."
       );
@@ -370,9 +372,9 @@ export default function TrainerUsersScreen({ userRole }: Props) {
         )
       );
       setRoutineUser(null);
-      Alert.alert("Rutina asignada", `La rutina fue asignada a ${routineUser.name}.`);
+      showUserFeedback("Rutina asignada", `La rutina fue asignada a ${routineUser.name}.`);
     } catch (routineError) {
-      Alert.alert(
+      showUserFeedback(
         "No se pudo asignar la rutina",
         routineError instanceof Error
           ? routineError.message
@@ -392,7 +394,7 @@ export default function TrainerUsersScreen({ userRole }: Props) {
       setProgressData(await getTraineeProgress(user.id));
     } catch (progressError) {
       setProgressUser(null);
-      Alert.alert(
+      showUserFeedback(
         "No se pudo consultar el progreso",
         progressError instanceof Error
           ? progressError.message

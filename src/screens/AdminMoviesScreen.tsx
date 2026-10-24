@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -14,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { showUserFeedback } from "../utils/userFeedback";
 
 import {
   createMovieReview,
@@ -81,17 +81,17 @@ export default function AdminMoviesScreen() {
   const saveReview = async () => {
     const value = Number(rating);
     if (!selectedMovie || !author.trim() || !Number.isInteger(value) || value < 1 || value > 10) {
-      Alert.alert("Datos incompletos", "Indica el autor y una calificación entera entre 1 y 10.");
+      showUserFeedback("Datos incompletos", "Indica el autor y una calificación entera entre 1 y 10.");
       return;
     }
     setSaving(true);
     try {
       await createMovieReview(selectedMovie.id, { autor: author.trim(), calificacion: value, comentario: comment.trim() });
       setSelectedMovie(null);
-      Alert.alert("Review registrada", "La review fue enviada correctamente.");
+      showUserFeedback("Review registrada", "La review fue enviada correctamente.");
       await loadMovies(true);
     } catch (saveError) {
-      Alert.alert("No se pudo registrar", saveError instanceof Error ? saveError.message : "La API rechazó la review.");
+      showUserFeedback("No se pudo registrar", saveError instanceof Error ? saveError.message : "La API rechazó la review.");
     } finally {
       setSaving(false);
     }

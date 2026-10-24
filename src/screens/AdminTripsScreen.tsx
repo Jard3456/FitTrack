@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -13,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { showUserFeedback } from "../utils/userFeedback";
 
 import {
   createScheduledTrip,
@@ -241,10 +241,10 @@ export default function AdminTripsScreen() {
       !/^\d{4}-\d{2}-\d{2}$/.test(form.fecha_fin) || form.fecha_fin < form.fecha_inicio ||
       !Number.isFinite(budget) || budget < 0) {
       if (form.fecha_fin && form.fecha_inicio && form.fecha_fin < form.fecha_inicio) {
-        Alert.alert("Fechas no válidas", "La fecha final debe ser igual o posterior a la fecha inicial.");
+        showUserFeedback("Fechas no válidas", "La fecha final debe ser igual o posterior a la fecha inicial.");
         return;
       }
-      Alert.alert("Datos incompletos", "Completa destino, país, fechas YYYY-MM-DD y un presupuesto válido.");
+      showUserFeedback("Datos incompletos", "Completa destino, país, fechas YYYY-MM-DD y un presupuesto válido.");
       return;
     }
     setSaving(true);
@@ -253,9 +253,9 @@ export default function AdminTripsScreen() {
       setModalVisible(false);
       setForm(emptyForm);
       await loadTrips(true);
-      Alert.alert("Viaje registrado", "El viaje programado fue creado correctamente.");
+      showUserFeedback("Viaje registrado", "El viaje programado fue creado correctamente.");
     } catch (saveError) {
-      Alert.alert("No se pudo registrar", saveError instanceof Error ? saveError.message : "La API rechazó el viaje.");
+      showUserFeedback("No se pudo registrar", saveError instanceof Error ? saveError.message : "La API rechazó el viaje.");
     } finally {
       setSaving(false);
     }
